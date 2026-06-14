@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+X-Nemo-Application-Type=generic
+Icon=harbour-rootheater
+Exec=harbour-rootheater
+Name=RooTheater
+Name[it]=RooTheater
+Comment=Multimedia player
+Comment[it]=Lettore multimediale
+MimeType=video/*;audio/*;application/x-mpegURL;application/vnd.apple.mpegurl;
+
+[X-Sailjail]
+Permissions=Audio;Videos;Music;Pictures;Documents;Downloads;RemovableMedia;UserDirs;Internet;MediaIndexing
+OrganizationName=com.github.RootGPT_YouTube
+ApplicationName=rootheater

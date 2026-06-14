@@ -1,0 +1,16 @@
+# RooTheater — files not to version
+*~
+*.pro.user
+*.pro.user.*
+translations/*.qm
+translations/harbour-rootheater.ts
+
+# Build artifacts
+*.o
+moc_*
+qrc_*
+Makefile
+harbour-rootheater
+RPMS/
+.sfdk/
+documentation.list
