@@ -68,6 +68,163 @@
     </message>
 </context>
 <context>
+    <name>FolderContentPage</name>
+    <message>
+        <source>Size</source>
+        <translation>Size</translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation>Date</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>Small</source>
+        <translation>Small</translation>
+    </message>
+    <message>
+        <source>Medium</source>
+        <translation>Medium</translation>
+    </message>
+    <message>
+        <source>Large</source>
+        <translation>Large</translation>
+    </message>
+    <message>
+        <source>Huge</source>
+        <translation>Huge</translation>
+    </message>
+    <message>
+        <source>Deleting</source>
+        <translation>Deleting</translation>
+    </message>
+    <message>
+        <source>Deleting %1 items</source>
+        <translation>Deleting %1 items</translation>
+    </message>
+    <message>
+        <source>%1 selected</source>
+        <translation>%1 selected</translation>
+    </message>
+    <message>
+        <source>Cancel selection</source>
+        <translation>Cancel selection</translation>
+    </message>
+    <message>
+        <source>Deselect all</source>
+        <translation>Deselect all</translation>
+    </message>
+    <message>
+        <source>Select all</source>
+        <translation>Select all</translation>
+    </message>
+    <message>
+        <source>Share (%1)</source>
+        <translation>Share (%1)</translation>
+    </message>
+    <message>
+        <source>Delete (%1)</source>
+        <translation>Delete (%1)</translation>
+    </message>
+    <message>
+        <source>Select</source>
+        <translation>Select</translation>
+    </message>
+    <message>
+        <source>Share</source>
+        <translation>Share</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>Sorting</source>
+        <translation>Sorting</translation>
+    </message>
+    <message>
+        <source>View tags</source>
+        <translation>View tags</translation>
+    </message>
+    <message>
+        <source>Thumbnails</source>
+        <translation>Thumbnails</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Sort by</translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <translation>Track</translation>
+    </message>
+    <message>
+        <source>Order</source>
+        <translation>Order</translation>
+    </message>
+    <message>
+        <source>Ascending</source>
+        <translation>Ascending</translation>
+    </message>
+    <message>
+        <source>Descending</source>
+        <translation>Descending</translation>
+    </message>
+</context>
+<context>
+    <name>GalleryPage</name>
+    <message>
+        <source>Storage not available</source>
+        <translation>Storage not available</translation>
+    </message>
+    <message>
+        <source>Images</source>
+        <translation>Images</translation>
+    </message>
+    <message>
+        <source>Videos</source>
+        <translation>Videos</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>Audio</translation>
+    </message>
+    <message>
+        <source>item</source>
+        <translation>item</translation>
+    </message>
+    <message>
+        <source>items</source>
+        <translation>items</translation>
+    </message>
+    <message>
+        <source>No media found</source>
+        <translation>No media found</translation>
+    </message>
+    <message>
+        <source>Create playlist</source>
+        <translation>Create playlist</translation>
+    </message>
+    <message>
+        <source>Album cover</source>
+        <translation>Album cover</translation>
+    </message>
+    <message>
+        <source>Play album</source>
+        <translation>Play album</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <source>Deleting</source>
+        <translation>Deleting</translation>
+    </message>
+</context>
+<context>
     <name>MainPage</name>
     <message>
         <source>About</source>
@@ -78,24 +235,8 @@
         <translation>Open network stream…</translation>
     </message>
     <message>
-        <source>Open file…</source>
-        <translation>Open file…</translation>
-    </message>
-    <message>
-        <source>Pull down to open a local file or a network stream.</source>
-        <translation>Pull down to open a local file or a network stream.</translation>
-    </message>
-    <message>
-        <source>Open file</source>
-        <translation>Open file</translation>
-    </message>
-    <message>
-        <source>Open network stream</source>
-        <translation>Open network stream</translation>
-    </message>
-    <message>
-        <source>Select media file</source>
-        <translation>Select media file</translation>
+        <source>Pull down to open a network stream.</source>
+        <translation>Pull down to open a network stream.</translation>
     </message>
     <message>
         <source>Network stream</source>
@@ -108,6 +249,155 @@
     <message>
         <source>Stream URL</source>
         <translation>Stream URL</translation>
+    </message>
+    <message>
+        <source>Internal memory</source>
+        <translation>Internal memory</translation>
+    </message>
+    <message>
+        <source>Android storage</source>
+        <translation>Android storage</translation>
+    </message>
+    <message>
+        <source>SD card</source>
+        <translation>SD card</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerPage</name>
+    <message>
+        <source>Analyzing…</source>
+        <translation>Analyzing…</translation>
+    </message>
+    <message>
+        <source>Backend: %1</source>
+        <translation>Backend: %1</translation>
+    </message>
+    <message>
+        <source>Probe failed: %1</source>
+        <translation>Probe failed: %1</translation>
+    </message>
+    <message>
+        <source>libVLC playback error</source>
+        <translation>libVLC playback error</translation>
+    </message>
+    <message>
+        <source>Hardware decode error</source>
+        <translation>Hardware decode error</translation>
+    </message>
+    <message>
+        <source>Track %1 / %2</source>
+        <translation>Track %1 / %2</translation>
+    </message>
+</context>
+<context>
+    <name>PlaylistBuilderPage</name>
+    <message>
+        <source>Internal memory</source>
+        <translation>Internal memory</translation>
+    </message>
+    <message>
+        <source>Android storage</source>
+        <translation>Android storage</translation>
+    </message>
+    <message>
+        <source>SD card</source>
+        <translation>SD card</translation>
+    </message>
+    <message>
+        <source>Saved: %1</source>
+        <translation>Saved: %1</translation>
+    </message>
+    <message>
+        <source>Could not save the playlist</source>
+        <translation>Could not save the playlist</translation>
+    </message>
+    <message>
+        <source>Save playlist (%1)</source>
+        <translation>Save playlist (%1)</translation>
+    </message>
+    <message>
+        <source>%1 selected</source>
+        <translation>%1 selected</translation>
+    </message>
+    <message>
+        <source>Create playlist</source>
+        <translation>Create playlist</translation>
+    </message>
+    <message>
+        <source>Playlist name</source>
+        <translation>Playlist name</translation>
+    </message>
+    <message>
+        <source>Playlist</source>
+        <translation>Playlist</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>Name</translation>
+    </message>
+</context>
+<context>
+    <name>TagsPage</name>
+    <message>
+        <source>Title</source>
+        <translation>Title</translation>
+    </message>
+    <message>
+        <source>Artist</source>
+        <translation>Artist</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Album artist</source>
+        <translation>Album artist</translation>
+    </message>
+    <message>
+        <source>Composer</source>
+        <translation>Composer</translation>
+    </message>
+    <message>
+        <source>Genre</source>
+        <translation>Genre</translation>
+    </message>
+    <message>
+        <source>Year</source>
+        <translation>Year</translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <translation>Track</translation>
+    </message>
+    <message>
+        <source>Disc</source>
+        <translation>Disc</translation>
+    </message>
+    <message>
+        <source>Comment</source>
+        <translation>Comment</translation>
+    </message>
+    <message>
+        <source>Publisher</source>
+        <translation>Publisher</translation>
+    </message>
+    <message>
+        <source>Encoder</source>
+        <translation>Encoder</translation>
+    </message>
+    <message>
+        <source>Copyright</source>
+        <translation>Copyright</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Language</translation>
+    </message>
+    <message>
+        <source>No tags</source>
+        <translation>No tags</translation>
     </message>
 </context>
 </TS>

@@ -18,6 +18,24 @@ Page {
                 title: qsTr("About RooTheater")
             }
 
+            Rectangle {
+                id: avatarClip
+                width: Math.min(2 * Theme.itemSizeHuge, Math.min(aboutPage.width, aboutPage.height) / 2)
+                height: width
+                radius: width / 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                color: "transparent"
+                clip: true
+
+                Image {
+                    width: parent.width
+                    height: parent.height
+                    source: Qt.resolvedUrl("../images/rootgpt-avatar.png")
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                }
+            }
+
             Label {
                 width: parent.width - 2 * Theme.horizontalPageMargin
                 anchors.horizontalCenter: parent.horizontalCenter

@@ -68,6 +68,163 @@
     </message>
 </context>
 <context>
+    <name>FolderContentPage</name>
+    <message>
+        <source>Size</source>
+        <translation>Dimensione</translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation>Data</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>Nome</translation>
+    </message>
+    <message>
+        <source>Small</source>
+        <translation>Piccole</translation>
+    </message>
+    <message>
+        <source>Medium</source>
+        <translation>Medie</translation>
+    </message>
+    <message>
+        <source>Large</source>
+        <translation>Grandi</translation>
+    </message>
+    <message>
+        <source>Huge</source>
+        <translation>Enormi</translation>
+    </message>
+    <message>
+        <source>Deleting</source>
+        <translation>Eliminazione</translation>
+    </message>
+    <message>
+        <source>Deleting %1 items</source>
+        <translation>Eliminazione di %1 elementi</translation>
+    </message>
+    <message>
+        <source>%1 selected</source>
+        <translation>%1 selezionati</translation>
+    </message>
+    <message>
+        <source>Cancel selection</source>
+        <translation>Annulla selezione</translation>
+    </message>
+    <message>
+        <source>Deselect all</source>
+        <translation>Deseleziona tutto</translation>
+    </message>
+    <message>
+        <source>Select all</source>
+        <translation>Seleziona tutto</translation>
+    </message>
+    <message>
+        <source>Share (%1)</source>
+        <translation>Condividi (%1)</translation>
+    </message>
+    <message>
+        <source>Delete (%1)</source>
+        <translation>Elimina (%1)</translation>
+    </message>
+    <message>
+        <source>Select</source>
+        <translation>Seleziona</translation>
+    </message>
+    <message>
+        <source>Share</source>
+        <translation>Condividi</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>Elimina</translation>
+    </message>
+    <message>
+        <source>Sorting</source>
+        <translation>Ordinamento</translation>
+    </message>
+    <message>
+        <source>View tags</source>
+        <translation>Mostra tag</translation>
+    </message>
+    <message>
+        <source>Thumbnails</source>
+        <translation>Miniature</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Ordina per</translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <translation>Traccia</translation>
+    </message>
+    <message>
+        <source>Order</source>
+        <translation>Ordine</translation>
+    </message>
+    <message>
+        <source>Ascending</source>
+        <translation>Crescente</translation>
+    </message>
+    <message>
+        <source>Descending</source>
+        <translation>Decrescente</translation>
+    </message>
+</context>
+<context>
+    <name>GalleryPage</name>
+    <message>
+        <source>Storage not available</source>
+        <translation>Memoria non disponibile</translation>
+    </message>
+    <message>
+        <source>Images</source>
+        <translation>Immagini</translation>
+    </message>
+    <message>
+        <source>Videos</source>
+        <translation>Video</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>Audio</translation>
+    </message>
+    <message>
+        <source>item</source>
+        <translation>elemento</translation>
+    </message>
+    <message>
+        <source>items</source>
+        <translation>elementi</translation>
+    </message>
+    <message>
+        <source>No media found</source>
+        <translation>Nessun media trovato</translation>
+    </message>
+    <message>
+        <source>Create playlist</source>
+        <translation>Crea playlist</translation>
+    </message>
+    <message>
+        <source>Album cover</source>
+        <translation>Copertina album</translation>
+    </message>
+    <message>
+        <source>Play album</source>
+        <translation>Riproduci album</translation>
+    </message>
+</context>
+<context>
+    <name>ImageViewerPage</name>
+    <message>
+        <source>Deleting</source>
+        <translation>Eliminazione</translation>
+    </message>
+</context>
+<context>
     <name>MainPage</name>
     <message>
         <source>About</source>
@@ -78,24 +235,8 @@
         <translation>Apri stream di rete…</translation>
     </message>
     <message>
-        <source>Open file…</source>
-        <translation>Apri file…</translation>
-    </message>
-    <message>
-        <source>Pull down to open a local file or a network stream.</source>
-        <translation>Trascina verso il basso per aprire un file locale o uno stream di rete.</translation>
-    </message>
-    <message>
-        <source>Open file</source>
-        <translation>Apri file</translation>
-    </message>
-    <message>
-        <source>Open network stream</source>
-        <translation>Apri stream di rete</translation>
-    </message>
-    <message>
-        <source>Select media file</source>
-        <translation>Seleziona file multimediale</translation>
+        <source>Pull down to open a network stream.</source>
+        <translation>Trascina verso il basso per aprire uno stream di rete.</translation>
     </message>
     <message>
         <source>Network stream</source>
@@ -108,6 +249,155 @@
     <message>
         <source>Stream URL</source>
         <translation>URL stream</translation>
+    </message>
+    <message>
+        <source>Internal memory</source>
+        <translation>Memoria interna</translation>
+    </message>
+    <message>
+        <source>Android storage</source>
+        <translation>Memoria Android</translation>
+    </message>
+    <message>
+        <source>SD card</source>
+        <translation>Scheda SD</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerPage</name>
+    <message>
+        <source>Analyzing…</source>
+        <translation>Analisi in corso…</translation>
+    </message>
+    <message>
+        <source>Backend: %1</source>
+        <translation>Backend: %1</translation>
+    </message>
+    <message>
+        <source>Probe failed: %1</source>
+        <translation>Analisi fallita: %1</translation>
+    </message>
+    <message>
+        <source>libVLC playback error</source>
+        <translation>Errore di riproduzione libVLC</translation>
+    </message>
+    <message>
+        <source>Hardware decode error</source>
+        <translation>Errore di decodifica hardware</translation>
+    </message>
+    <message>
+        <source>Track %1 / %2</source>
+        <translation>Traccia %1 / %2</translation>
+    </message>
+</context>
+<context>
+    <name>PlaylistBuilderPage</name>
+    <message>
+        <source>Internal memory</source>
+        <translation>Memoria interna</translation>
+    </message>
+    <message>
+        <source>Android storage</source>
+        <translation>Memoria Android</translation>
+    </message>
+    <message>
+        <source>SD card</source>
+        <translation>Scheda SD</translation>
+    </message>
+    <message>
+        <source>Saved: %1</source>
+        <translation>Salvata: %1</translation>
+    </message>
+    <message>
+        <source>Could not save the playlist</source>
+        <translation>Impossibile salvare la playlist</translation>
+    </message>
+    <message>
+        <source>Save playlist (%1)</source>
+        <translation>Salva playlist (%1)</translation>
+    </message>
+    <message>
+        <source>%1 selected</source>
+        <translation>%1 selezionati</translation>
+    </message>
+    <message>
+        <source>Create playlist</source>
+        <translation>Crea playlist</translation>
+    </message>
+    <message>
+        <source>Playlist name</source>
+        <translation>Nome playlist</translation>
+    </message>
+    <message>
+        <source>Playlist</source>
+        <translation>Playlist</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>Nome</translation>
+    </message>
+</context>
+<context>
+    <name>TagsPage</name>
+    <message>
+        <source>Title</source>
+        <translation>Titolo</translation>
+    </message>
+    <message>
+        <source>Artist</source>
+        <translation>Artista</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Album artist</source>
+        <translation>Artista album</translation>
+    </message>
+    <message>
+        <source>Composer</source>
+        <translation>Compositore</translation>
+    </message>
+    <message>
+        <source>Genre</source>
+        <translation>Genere</translation>
+    </message>
+    <message>
+        <source>Year</source>
+        <translation>Anno</translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <translation>Traccia</translation>
+    </message>
+    <message>
+        <source>Disc</source>
+        <translation>Disco</translation>
+    </message>
+    <message>
+        <source>Comment</source>
+        <translation>Commento</translation>
+    </message>
+    <message>
+        <source>Publisher</source>
+        <translation>Editore</translation>
+    </message>
+    <message>
+        <source>Encoder</source>
+        <translation>Codificatore</translation>
+    </message>
+    <message>
+        <source>Copyright</source>
+        <translation>Copyright</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Lingua</translation>
+    </message>
+    <message>
+        <source>No tags</source>
+        <translation>Nessun tag</translation>
     </message>
 </context>
 </TS>

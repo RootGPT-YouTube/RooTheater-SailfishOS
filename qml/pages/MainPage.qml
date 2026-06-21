@@ -1,10 +1,13 @@
 import QtQuick 2.0
 import Sailfish.Silica 1.0
-import Sailfish.Pickers 1.0
+import RooTheater.Media 1.0
 
 Page {
     id: page
     allowedOrientations: Orientation.All
+
+    // Discovered at startup: internal / Android / SD-card roots for the gallery.
+    StorageRoots { id: storage }
 
     SilicaFlickable {
         anchors.fill: parent
@@ -18,10 +21,6 @@ Page {
             MenuItem {
                 text: qsTr("Open network stream…")
                 onClicked: page.openUrlDialog()
-            }
-            MenuItem {
-                text: qsTr("Open file…")
-                onClicked: page.openFilePicker()
             }
         }
 
@@ -39,19 +38,40 @@ Page {
                 width: parent.width - 2 * Theme.horizontalPageMargin
                 wrapMode: Text.WordWrap
                 color: Theme.secondaryHighlightColor
-                text: qsTr("Pull down to open a local file or a network stream.")
+                text: qsTr("Pull down to open a network stream.")
             }
 
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: qsTr("Open file")
-                onClicked: page.openFilePicker()
-            }
-
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: qsTr("Open network stream")
-                onClicked: page.openUrlDialog()
+            // Gallery: three storage categories. Each opens a folder-grouped grid
+            // of the images and videos found under that storage root.
+            Repeater {
+                model: [
+                    { title: qsTr("Internal memory"), icon: "image://theme/icon-m-device",
+                      root: storage.internalRoot },
+                    { title: qsTr("Android storage"), icon: "image://theme/icon-m-other",
+                      root: storage.androidRoot },
+                    { title: qsTr("SD card"), icon: "image://theme/icon-m-sd-card",
+                      root: storage.sdcardRoots.length > 0 ? storage.sdcardRoots[0] : "" }
+                ]
+                delegate: BackgroundItem {
+                    width: page.width
+                    onClicked: pageStack.push(Qt.resolvedUrl("GalleryPage.qml"),
+                                              { rootPath: modelData.root, title: modelData.title })
+                    Row {
+                        x: Theme.horizontalPageMargin
+                        width: parent.width - 2 * Theme.horizontalPageMargin
+                        height: parent.height
+                        spacing: Theme.paddingLarge
+                        Image {
+                            anchors.verticalCenter: parent.verticalCenter
+                            source: modelData.icon
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.title
+                            color: highlighted ? Theme.highlightColor : Theme.primaryColor
+                        }
+                    }
+                }
             }
         }
 
@@ -62,15 +82,6 @@ Page {
         if (!source || source === "")
             return
         pageStack.push(Qt.resolvedUrl("PlayerPage.qml"), { source: source })
-    }
-
-    function openFilePicker() {
-        var picker = pageStack.push("Sailfish.Pickers.FilePickerPage", {
-            title: qsTr("Select media file")
-        })
-        picker.selectedContentPropertiesChanged.connect(function() {
-            page.play(picker.selectedContentProperties.filePath)
-        })
     }
 
     function openUrlDialog() {

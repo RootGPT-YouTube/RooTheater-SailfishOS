@@ -10,6 +10,6 @@ Comment[it]=Lettore multimediale
 MimeType=video/*;audio/*;application/x-mpegURL;application/vnd.apple.mpegurl;
 
 [X-Sailjail]
-Permissions=Audio;Videos;Music;Pictures;Documents;Downloads;RemovableMedia;UserDirs;Internet;MediaIndexing
+Permissions=Audio;Videos;Music;Pictures;Documents;Downloads;RemovableMedia;UserDirs;Internet
 OrganizationName=com.github.RootGPT_YouTube
 ApplicationName=rootheater

@@ -25,6 +25,25 @@
 #include <QGuiApplication>
 #include <QQuickView>
 #include <QQmlContext>
+#include <QQmlEngine>
+#include <qqml.h>
+
+#include "media/MediaEngine.h"
+#include "media/VideoSurface.h"
+#include "media/CoverImageProvider.h"
+#include "media/TrackCoverProvider.h"
+#include "media/TagReader.h"
+#include "media/TrackIndexer.h"
+#include "media/StorageRoots.h"
+#include "media/MediaGalleryModel.h"
+#include "media/FileOperations.h"
+#ifdef HAVE_LIBVLC
+#include "media/VlcBackend.h"
+#endif
+#ifdef HAVE_DROIDMEDIA
+#include "media/DroidCodecBackend.h"
+#include "media/DroidVideoSink.h"
+#endif
 
 #ifndef APP_VERSION
 #define APP_VERSION "0.0.0"
@@ -36,7 +55,42 @@ int main(int argc, char *argv[])
     app->setApplicationName("harbour-rootheater");
     app->setApplicationVersion(APP_VERSION);
 
+    // Engine facade exposed to QML. Backend enum (MediaEngine.Droidmedia, …) is
+    // accessible once the type is registered under this import URI.
+    qmlRegisterType<MediaEngine>("RooTheater.Media", 1, 0, "MediaEngine");
+    // Shared CPU-buffer video sink for the libVLC and droidmedia backends.
+    qmlRegisterType<VideoSurface>("RooTheater.Media", 1, 0, "VideoSurface");
+    // Media gallery: storage roots + the folder-grouped image/video model.
+    qmlRegisterType<StorageRoots>("RooTheater.Media", 1, 0, "StorageRoots");
+    qmlRegisterType<MediaGalleryModel>("RooTheater.Media", 1, 0, "MediaGalleryModel");
+    // Gallery file actions (delete); share is handled QML-side via Sailfish.Share.
+    qmlRegisterType<FileOperations>("RooTheater.Media", 1, 0, "FileOperations");
+    // Async per-file metadata reader (album track titles + the "View tags" view).
+    qmlRegisterType<TagReader>("RooTheater.Media", 1, 0, "TagReader");
+    // Batch track-number reader backing the audio "Sort by Track" order.
+    qmlRegisterType<TrackIndexer>("RooTheater.Media", 1, 0, "TrackIndexer");
+#ifdef HAVE_LIBVLC
+    // Layer 3 libvlc backend (built only when libvlc is vendored; see the .pro).
+    qmlRegisterType<VlcBackend>("RooTheater.Media", 1, 0, "VlcBackend");
+#endif
+#ifdef HAVE_DROIDMEDIA
+    // Layer 1 direct droidmedia HW decode backend (v0.3).
+    qmlRegisterType<DroidCodecBackend>("RooTheater.Media", 1, 0, "DroidCodecBackend");
+    // Zero-copy EGLImage video surface for the droidmedia path (v0.3.3).
+    qmlRegisterType<DroidVideoSink>("RooTheater.Media", 1, 0, "DroidVideoSink");
+#endif
+
     QScopedPointer<QQuickView> view(SailfishApp::createView());
+
+    // In-memory provider for embedded audio cover art (engine owns it). MediaEngine
+    // reaches it via g_coverProvider; QML shows "image://rtcover/<token>".
+    g_coverProvider = new CoverImageProvider;
+    view->engine()->addImageProvider(QStringLiteral("rtcover"), g_coverProvider);
+
+    // Path-keyed lazy cover provider for the gallery grids (per-album / per-track
+    // embedded art): QML uses "image://rttrackcover/<percent-encoded-path>". The
+    // QML engine takes ownership of the provider.
+    view->engine()->addImageProvider(QStringLiteral("rttrackcover"), new TrackCoverProvider);
 
     // Exposed to QML (AboutPage); single source of truth is RT_APP_VERSION in the .pro.
     view->rootContext()->setContextProperty("appVersion", QStringLiteral(APP_VERSION));
