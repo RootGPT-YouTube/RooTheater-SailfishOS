@@ -68,6 +68,37 @@
     </message>
 </context>
 <context>
+    <name>CoverPickerPage</name>
+    <message>
+        <source>Internal memory</source>
+        <translation>Internal memory</translation>
+    </message>
+    <message>
+        <source>Android storage</source>
+        <translation>Android storage</translation>
+    </message>
+    <message>
+        <source>SD card</source>
+        <translation>SD card</translation>
+    </message>
+    <message>
+        <source>No images</source>
+        <translation>No images</translation>
+    </message>
+    <message>
+        <source>Choose image</source>
+        <translation>Choose image</translation>
+    </message>
+    <message>
+        <source>item</source>
+        <translation>item</translation>
+    </message>
+    <message>
+        <source>items</source>
+        <translation>items</translation>
+    </message>
+</context>
+<context>
     <name>FolderContentPage</name>
     <message>
         <source>Size</source>
@@ -216,6 +247,22 @@
         <source>Play album</source>
         <translation>Play album</translation>
     </message>
+    <message>
+        <source>Playlists</source>
+        <translation>Playlists</translation>
+    </message>
+    <message>
+        <source>playlist</source>
+        <translation>playlist</translation>
+    </message>
+    <message>
+        <source>playlists</source>
+        <translation>playlists</translation>
+    </message>
+    <message>
+        <source>Create video playlist</source>
+        <translation>Create video playlist</translation>
+    </message>
 </context>
 <context>
     <name>ImageViewerPage</name>
@@ -335,6 +382,33 @@
     <message>
         <source>Name</source>
         <translation>Name</translation>
+    </message>
+    <message>
+        <source>Create video playlist</source>
+        <translation>Create video playlist</translation>
+    </message>
+</context>
+<context>
+    <name>PlaylistsPage</name>
+    <message>
+        <source>This playlist is empty or could not be read</source>
+        <translation>This playlist is empty or could not be read</translation>
+    </message>
+    <message>
+        <source>No playlists</source>
+        <translation>No playlists</translation>
+    </message>
+    <message>
+        <source>Playlist cover</source>
+        <translation>Playlist cover</translation>
+    </message>
+    <message>
+        <source>Delete playlist</source>
+        <translation>Delete playlist</translation>
+    </message>
+    <message>
+        <source>Deleting</source>
+        <translation>Deleting</translation>
     </message>
 </context>
 <context>

@@ -1,6 +1,5 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
-import Sailfish.Pickers 1.0
 import Nemo.Thumbnailer 1.0
 import Nemo.Configuration 1.0
 import RooTheater.Media 1.0
@@ -16,10 +15,17 @@ Page {
     // ({ folderName, folderPath, items })
     property var actionAlbum: null
 
+    // A playlist's kind follows where the builder saved it: Videos/ → video
+    // (square play badge), otherwise audio (musical-note badge).
+    function playlistKind(folderPath) {
+        return /\/Videos\/?$/.test(folderPath) ? "video" : "audio"
+    }
+
     function typeLabel(key) {
         if (key === "image") return qsTr("Images")
         if (key === "video") return qsTr("Videos")
         if (key === "audio") return qsTr("Audio")
+        if (key === "playlist") return qsTr("Playlists")
         return key
     }
 
@@ -53,10 +59,10 @@ Page {
     }
 
     function pickCover(folderPath) {
-        var picker = pageStack.push("Sailfish.Pickers.ImagePickerPage")
-        picker.selectedContentChanged.connect(function() {
-            if (picker.selectedContent)
-                page.setCover(folderPath, picker.selectedContent.toString())
+        var picker = pageStack.push(Qt.resolvedUrl("CoverPickerPage.qml"),
+                                    { caller: page })
+        picker.coverSelected.connect(function(path) {
+            page.setCover(folderPath, path)
         })
     }
 
@@ -107,6 +113,10 @@ Page {
     function removePaths(paths) {
         galleryModel.removePaths(paths)
     }
+    // Re-scan this storage (e.g. after the builder saves a new playlist here).
+    function refresh() {
+        galleryModel.refresh()
+    }
 
     MediaGalleryModel {
         id: galleryModel
@@ -122,8 +132,14 @@ Page {
 
         PullDownMenu {
             MenuItem {
+                text: qsTr("Create video playlist")
+                onClicked: pageStack.push(Qt.resolvedUrl("PlaylistBuilderPage.qml"),
+                                          { owner: page, mediaType: "video" })
+            }
+            MenuItem {
                 text: qsTr("Create playlist")
-                onClicked: pageStack.push(Qt.resolvedUrl("PlaylistBuilderPage.qml"))
+                onClicked: pageStack.push(Qt.resolvedUrl("PlaylistBuilderPage.qml"),
+                                          { owner: page, mediaType: "audio" })
             }
         }
 
@@ -136,10 +152,11 @@ Page {
             contentHeight: Theme.itemSizeLarge
 
             readonly property bool isAudio: typeKey === "audio"
+            readonly property bool isPlaylist: typeKey === "playlist"
 
             // Non-audio: thumbnail of the item shown first when opening the folder
             // (i.e. honouring that folder's saved sort), not a fixed one.
-            readonly property var firstItem: !row.isAudio
+            readonly property var firstItem: (!row.isAudio && !row.isPlaylist)
                                              ? page.firstItem(folderPath, typeKey, items)
                                              : null
             Thumbnail {
@@ -148,7 +165,7 @@ Page {
                 x: Theme.horizontalPageMargin
                 width: Theme.itemSizeLarge - Theme.paddingMedium
                 height: width
-                visible: !row.isAudio
+                visible: !row.isAudio && !row.isPlaylist
                 source: row.firstItem ? row.firstItem.filePath : ""
                 mimeType: row.firstItem ? (row.firstItem.mimeType || "") : ""
                 sourceSize.width: width
@@ -192,6 +209,35 @@ Page {
                 }
             }
 
+            // Playlist folder badge: musical note for audio, square play for video.
+            Item {
+                anchors.verticalCenter: parent.verticalCenter
+                x: Theme.horizontalPageMargin
+                width: Theme.itemSizeLarge - Theme.paddingMedium
+                height: width
+                visible: row.isPlaylist
+
+                readonly property bool isVideoPlaylist:
+                    row.isPlaylist && page.playlistKind(folderPath) === "video"
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: Theme.rgba(Theme.highlightBackgroundColor, 0.1)
+                }
+                Label {
+                    anchors.centerIn: parent
+                    visible: !parent.isVideoPlaylist
+                    text: "♪"
+                    color: Theme.secondaryColor
+                    font.pixelSize: parent.height * 0.5
+                }
+                Image {
+                    anchors.centerIn: parent
+                    visible: parent.isVideoPlaylist
+                    source: "image://theme/icon-m-media-playlists?" + Theme.secondaryColor
+                }
+            }
+
             Column {
                 anchors {
                     left: preview.right
@@ -207,16 +253,25 @@ Page {
                     color: row.highlighted ? Theme.highlightColor : Theme.primaryColor
                 }
                 Label {
-                    text: count + " " + (count === 1 ? qsTr("item") : qsTr("items"))
+                    text: row.isPlaylist
+                          ? count + " " + (count === 1 ? qsTr("playlist") : qsTr("playlists"))
+                          : count + " " + (count === 1 ? qsTr("item") : qsTr("items"))
                     color: row.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
                     font.pixelSize: Theme.fontSizeSmall
                 }
             }
 
-            onClicked: pageStack.push(Qt.resolvedUrl("FolderContentPage.qml"),
-                                      { title: folderName, kind: typeKey,
-                                        folderPath: folderPath, items: items,
-                                        owner: page })
+            onClicked: {
+                if (row.isPlaylist)
+                    pageStack.push(Qt.resolvedUrl("PlaylistsPage.qml"),
+                                   { title: folderName, items: items, owner: page,
+                                     kind: page.playlistKind(folderPath) })
+                else
+                    pageStack.push(Qt.resolvedUrl("FolderContentPage.qml"),
+                                   { title: folderName, kind: typeKey,
+                                     folderPath: folderPath, items: items,
+                                     owner: page })
+            }
             onPressAndHold: {
                 if (row.isAudio)
                     page.actionAlbum = { folderName: folderName,

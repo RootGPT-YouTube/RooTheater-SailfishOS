@@ -13,7 +13,7 @@ TARGET = harbour-rootheater
 # property exposed by main.cpp.
 # NB: use RT_APP_VERSION (not `VERSION`): qmake treats `VERSION` as reserved
 # and on the app template truncates it to major.minor when expanded.
-RT_APP_VERSION = 0.5.0
+RT_APP_VERSION = 0.6.0
 VERSION = $$RT_APP_VERSION
 
 CONFIG += sailfishapp sailfishapp_i18n c++17
@@ -79,6 +79,8 @@ DISTFILES += LICENSE \
     qml/pages/SegmentSelector.qml \
     qml/pages/TagsPage.qml \
     qml/pages/PlaylistBuilderPage.qml \
+    qml/pages/PlaylistsPage.qml \
+    qml/pages/CoverPickerPage.qml \
     qml/images/rootgpt-avatar.png \
     rpm/harbour-rootheater.spec \
     rpm/harbour-rootheater.yaml \

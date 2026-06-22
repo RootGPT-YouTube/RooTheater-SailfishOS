@@ -30,7 +30,7 @@
 
 namespace {
 
-// Returns 0=image, 1=video, 2=audio, -1=not media.
+// Returns 0=image, 1=video, 2=audio, 3=playlist, -1=not media.
 int classify(const QString &ext)
 {
     static const QSet<QString> img = {
@@ -45,9 +45,13 @@ int classify(const QString &ext)
         "mp3", "flac", "ogg", "oga", "opus", "m4a", "aac", "wav", "wma", "ape",
         "aiff", "aif", "mka", "ac3", "dts", "amr"
     };
+    static const QSet<QString> pls = {
+        "m3u", "m3u8"
+    };
     if (img.contains(ext)) return 0;
     if (vid.contains(ext)) return 1;
     if (aud.contains(ext)) return 2;
+    if (pls.contains(ext)) return 3;
     return -1;
 }
 
@@ -57,6 +61,7 @@ const char *typeKey(int t)
     case 0: return "image";
     case 1: return "video";
     case 2: return "audio";
+    case 3: return "playlist";
     default: return "";
     }
 }
@@ -118,6 +123,17 @@ void MediaGalleryModel::setRootPath(const QString &path)
         emit scanningChanged();
     }
     m_watcher.setFuture(QtConcurrent::run(&MediaGalleryModel::scan, path));
+}
+
+void MediaGalleryModel::refresh()
+{
+    if (m_rootPath.isEmpty())
+        return;
+    if (!m_scanning) {
+        m_scanning = true;
+        emit scanningChanged();
+    }
+    m_watcher.setFuture(QtConcurrent::run(&MediaGalleryModel::scan, m_rootPath));
 }
 
 void MediaGalleryModel::removePaths(const QStringList &paths)
@@ -197,7 +213,7 @@ QVector<GalleryGroup> MediaGalleryModel::scan(const QString &root)
                 continue;
             QVector<QVariantList> &buckets = byDir[dirPath];
             if (buckets.isEmpty())
-                buckets.resize(3);
+                buckets.resize(4);
             QVariantMap item;
             item.insert("filePath", fi.absoluteFilePath());
             item.insert("fileName", fi.fileName());
@@ -227,7 +243,7 @@ QVector<GalleryGroup> MediaGalleryModel::scan(const QString &root)
     for (auto it = byDir.begin(); it != byDir.end(); ++it) {
         const QString &path = it.key();
         QVector<QVariantList> &buckets = it.value();
-        for (int t = 0; t < 3; ++t) {
+        for (int t = 0; t < 4; ++t) {
             if (buckets[t].isEmpty())
                 continue;
             GalleryGroup g;
@@ -243,7 +259,7 @@ QVector<GalleryGroup> MediaGalleryModel::scan(const QString &root)
         }
     }
 
-    // Order by type (images, videos, audio), then folder name (case-insensitive).
+    // Order by type (images, videos, audio, playlists), then folder name.
     std::sort(result.begin(), result.end(),
               [](const GalleryGroup &a, const GalleryGroup &b) {
                   if (a.type != b.type)

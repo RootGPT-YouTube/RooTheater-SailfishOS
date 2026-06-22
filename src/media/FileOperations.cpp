@@ -64,3 +64,13 @@ bool FileOperations::writeTextFile(const QString &path, const QString &contents)
     f.close();
     return ok;
 }
+
+QString FileOperations::readTextFile(const QString &path)
+{
+    QFile f(toLocalPath(path));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return QString();
+    const QString contents = QString::fromUtf8(f.readAll());
+    f.close();
+    return contents;
+}

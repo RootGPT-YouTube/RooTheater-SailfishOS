@@ -2,13 +2,21 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 import RooTheater.Media 1.0
 
-// Build a playlist by picking audio tracks file-by-file from every storage.
-// Sections are the audio folders (across internal / Android / SD); the saved
-// .m3u8 lands in the Music folder of the tracks' storage, or — when the picks
-// span several storages — in internal memory.
+// Build a playlist by picking tracks file-by-file from every storage. Sections
+// are the folders of the chosen media type (across internal / Android / SD); the
+// saved .m3u8 lands in the Music (audio) / Videos (video) folder of the tracks'
+// storage, or — when the picks span several storages — in internal memory.
 Page {
     id: page
     allowedOrientations: Orientation.All
+
+    // "audio" → audio folders, saved under Music/; "video" → video folders,
+    // saved under Videos/. Same rules either way.
+    property string mediaType: "audio"
+    readonly property bool isVideo: mediaType === "video"
+
+    // GalleryPage, refreshed after a save so the new playlist shows up at once.
+    property QtObject owner
 
     StorageRoots { id: storage }
     FileOperations { id: fileOps }
@@ -54,14 +62,15 @@ Page {
         }
         return best
     }
-    // Where to save: the common storage's Music folder, else internal memory's.
+    // Where to save: the common storage's media folder (Music/audio, Videos/video),
+    // else internal memory's.
     function targetDir(paths) {
         var set = {}
         for (var i = 0; i < paths.length; ++i)
             set[storageOf(paths[i])] = true
         var keys = Object.keys(set)
         var base = (keys.length === 1 && keys[0] !== "") ? keys[0] : storage.internalRoot
-        return base + "/Music"
+        return base + (page.isVideo ? "/Videos" : "/Music")
     }
 
     function savePlaylist(name) {
@@ -74,6 +83,9 @@ Page {
             savedBanner.text = qsTr("Saved: %1").arg(file)
             savedBanner.visible = true
             page.selected = ({}); page.selectedCount = 0; page.selectionTick++
+            // Make the new playlist appear in the gallery without a manual reload.
+            if (page.owner && typeof page.owner.refresh === "function")
+                page.owner.refresh()
         } else {
             savedBanner.text = qsTr("Could not save the playlist")
             savedBanner.visible = true
@@ -99,7 +111,8 @@ Page {
             PageHeader {
                 title: page.selectedCount > 0
                        ? qsTr("%1 selected").arg(page.selectedCount)
-                       : qsTr("Create playlist")
+                       : (page.isVideo ? qsTr("Create video playlist")
+                                       : qsTr("Create playlist"))
             }
 
             Label {
@@ -132,7 +145,7 @@ Page {
 
                         delegate: Column {
                             width: column.width
-                            visible: typeKey === "audio"
+                            visible: typeKey === page.mediaType
 
                             SectionHeader {
                                 text: folderName + " · " + storageLabel

@@ -26,14 +26,15 @@
 #include <QFutureWatcher>
 
 // One model row = one (folder × media-type) group: a folder that contains at
-// least one item of a given type (image / video / audio). So a folder with both
-// photos and clips yields two rows. Rows are ordered by type (images, then
-// videos, then audio) and then folder name, so a section-by-type list shows
-// "Images / Videos / Audio" with the matching folders under each.
+// least one item of a given type (image / video / audio / playlist). So a folder
+// with both photos and clips yields two rows. Rows are ordered by type (images,
+// then videos, then audio, then playlists) and then folder name, so a
+// section-by-type list shows "Images / Videos / Audio / Playlists" with the
+// matching folders under each.
 struct GalleryGroup
 {
-    int type = 0;          // 0 image, 1 video, 2 audio
-    QString typeKey;       // "image" / "video" / "audio" (for QML section + routing)
+    int type = 0;          // 0 image, 1 video, 2 audio, 3 playlist
+    QString typeKey;       // "image"/"video"/"audio"/"playlist" (QML section + routing)
     QString folderName;
     QString folderPath;
     QVariantList items;    // [{ filePath, fileName, mimeType }, …] (this type only)
@@ -73,6 +74,10 @@ public:
     // in sync after a delete inside a folder, without a full re-scan. Groups left
     // empty are removed. Called from QML (FolderContentPage → GalleryPage).
     Q_INVOKABLE void removePaths(const QStringList &paths);
+
+    // Re-scan the current root from scratch. Used after a file appears outside
+    // this model's knowledge (e.g. a newly saved playlist).
+    Q_INVOKABLE void refresh();
 
 signals:
     void rootPathChanged();

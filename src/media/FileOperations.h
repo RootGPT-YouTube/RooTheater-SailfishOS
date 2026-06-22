@@ -41,6 +41,10 @@ public:
     // and truncating any existing file. Used by the playlist builder to save the
     // generated .m3u8. Returns true on success.
     Q_INVOKABLE bool writeTextFile(const QString &path, const QString &contents);
+
+    // Reads `path` and returns its contents as UTF-8 text (empty string if the
+    // file can't be read). Used to load a saved .m3u8 playlist for playback.
+    Q_INVOKABLE QString readTextFile(const QString &path);
 };
 
 #endif // FILEOPERATIONS_H
