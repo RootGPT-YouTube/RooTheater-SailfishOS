@@ -1,3 +1,3 @@
-* Sun Jun 14 2026 RootGPT <emagiampa@gmail.com> 0.1.0-1
+* Sun Jun 14 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 0.1.0-1
 - Initial scaffold: Silica UI, open local file / open network URL,
   QtMultimedia baseline player (HW-accelerated via gst-droid).
