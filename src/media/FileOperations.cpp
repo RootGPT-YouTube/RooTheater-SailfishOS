@@ -22,6 +22,8 @@
 #include <QUrl>
 #include <QDir>
 #include <QFileInfo>
+#include <QMimeDatabase>
+#include <QDateTime>
 
 namespace {
 QString toLocalPath(const QString &path)
@@ -73,4 +75,22 @@ QString FileOperations::readTextFile(const QString &path)
     const QString contents = QString::fromUtf8(f.readAll());
     f.close();
     return contents;
+}
+
+QVariantMap FileOperations::fileInfo(const QString &path)
+{
+    const QFileInfo fi(toLocalPath(path));
+    QVariantMap m;
+    if (!fi.exists())
+        return m;
+    // Mirror MediaGalleryModel's per-item shape so the result can be spliced
+    // straight into a folder view's model.
+    static QMimeDatabase db;
+    m.insert("filePath", fi.absoluteFilePath());
+    m.insert("fileName", fi.fileName());
+    m.insert("mimeType",
+             db.mimeTypeForFile(fi, QMimeDatabase::MatchExtension).name());
+    m.insert("size", static_cast<qlonglong>(fi.size()));
+    m.insert("modified", fi.lastModified().toMSecsSinceEpoch());
+    return m;
 }

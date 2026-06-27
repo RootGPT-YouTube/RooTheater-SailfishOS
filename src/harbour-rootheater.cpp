@@ -27,6 +27,8 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <qqml.h>
+#include <QDBusConnection>
+#include <QString>
 
 #include "media/MediaEngine.h"
 #include "media/VideoSurface.h"
@@ -37,6 +39,9 @@
 #include "media/StorageRoots.h"
 #include "media/MediaGalleryModel.h"
 #include "media/FileOperations.h"
+#include "media/ImageEditor.h"
+#include "media/OpenHandler.h"
+#include "media/CoverState.h"
 #ifdef HAVE_LIBVLC
 #include "media/VlcBackend.h"
 #endif
@@ -65,6 +70,8 @@ int main(int argc, char *argv[])
     qmlRegisterType<MediaGalleryModel>("RooTheater.Media", 1, 0, "MediaGalleryModel");
     // Gallery file actions (delete); share is handled QML-side via Sailfish.Share.
     qmlRegisterType<FileOperations>("RooTheater.Media", 1, 0, "FileOperations");
+    // Full-resolution image editor (crop + freehand/circle/arrow annotations).
+    qmlRegisterType<ImageEditor>("RooTheater.Media", 1, 0, "ImageEditor");
     // Async per-file metadata reader (album track titles + the "View tags" view).
     qmlRegisterType<TagReader>("RooTheater.Media", 1, 0, "TagReader");
     // Batch track-number reader backing the audio "Sort by Track" order.
@@ -81,6 +88,37 @@ int main(int argc, char *argv[])
 #endif
 
     QScopedPointer<QQuickView> view(SailfishApp::createView());
+
+    // MIME-handler plumbing: own the app's session-bus name and export the
+    // org.freedesktop.Application interface so SailfishOS can hand us a file to
+    // open. The bus name/object path come from the .desktop X-Sailjail identity
+    // (OrganizationName.ApplicationName); ExecDBus there makes Sailjail grant it.
+    OpenHandler *openHandler = new OpenHandler(app.data());
+    // A path may also arrive on argv (Exec … %U); take the first non-option one.
+    for (int i = 1; i < argc; ++i) {
+        const QString a = QString::fromLocal8Bit(argv[i]);
+        if (a.startsWith(QLatin1Char('-')))
+            continue;
+        openHandler->setInitialPath(a);
+        break;
+    }
+    {
+        const QString busName = QStringLiteral("com.github.RootGPT_YouTube.rootheater");
+        const QString objPath = QStringLiteral("/com/github/RootGPT_YouTube/rootheater");
+        QDBusConnection bus = QDBusConnection::sessionBus();
+        bus.registerObject(objPath, openHandler, QDBusConnection::ExportAllSlots);
+        bus.registerService(busName);
+    }
+    // Bring the window forward when a file (or bare activation) arrives.
+    QObject::connect(openHandler, &OpenHandler::openRequested,
+                     [&view](const QString &) { view->raise(); });
+    QObject::connect(openHandler, &OpenHandler::activated,
+                     [&view]() { view->raise(); });
+    view->rootContext()->setContextProperty("openHandler", openHandler);
+
+    // Shared playback state for the app cover (written by the viewer/player).
+    CoverState *coverState = new CoverState(app.data());
+    view->rootContext()->setContextProperty("coverState", coverState);
 
     // In-memory provider for embedded audio cover art (engine owns it). MediaEngine
     // reaches it via g_coverProvider; QML shows "image://rtcover/<token>".

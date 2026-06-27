@@ -22,7 +22,7 @@ CONFIG += sailfishapp sailfishapp_i18n c++17
 # routes through gst-droid → hardware-accelerated decode for common formats.
 # Layer 2/3 (libvlc) and the custom droidmedia HW path land in later versions.
 # concurrent: MediaEngine runs the ffmpeg probe off the GUI thread.
-QT += core multimedia concurrent
+QT += core gui multimedia concurrent dbus
 
 DEFINES += APP_VERSION=\\\"$$RT_APP_VERSION\\\"
 
@@ -36,7 +36,9 @@ SOURCES += src/harbour-rootheater.cpp \
     src/media/TrackIndexer.cpp \
     src/media/StorageRoots.cpp \
     src/media/MediaGalleryModel.cpp \
-    src/media/FileOperations.cpp
+    src/media/FileOperations.cpp \
+    src/media/ImageEditor.cpp \
+    src/media/OpenHandler.cpp
 
 HEADERS += src/media/MediaProbe.h \
     src/media/MediaEngine.h \
@@ -47,7 +49,10 @@ HEADERS += src/media/MediaProbe.h \
     src/media/TrackIndexer.h \
     src/media/StorageRoots.h \
     src/media/MediaGalleryModel.h \
-    src/media/FileOperations.h
+    src/media/FileOperations.h \
+    src/media/ImageEditor.h \
+    src/media/OpenHandler.h \
+    src/media/CoverState.h
 
 # License compliance: the GPLv3 text (and, as bundled libs land, their
 # LGPL/GPL/BSD texts) must reach whoever receives the RPM. AboutPage points
@@ -55,6 +60,12 @@ HEADERS += src/media/MediaProbe.h \
 licenses.files = $$PWD/LICENSE $$PWD/NOTICE.md
 licenses.path = /usr/share/$${TARGET}/licenses
 INSTALLS += licenses
+
+# Secondary NoDisplay .desktop carrying the Sailfish content-action ("open/share
+# with") hooks for media MIME types → D-Bus openUrl on our app service.
+openurl_desktop.files = $$PWD/harbour-rootheater-open-url.desktop
+openurl_desktop.path = /usr/share/applications
+INSTALLS += openurl_desktop
 
 # ffmpeg is always linked (static facade, scripts/build-ffmpeg.sh) → its LGPL
 # texts ship unconditionally. (Built without --enable-gpl/x264, so LGPL only.)
@@ -76,12 +87,16 @@ DISTFILES += LICENSE \
     qml/pages/GalleryPage.qml \
     qml/pages/FolderContentPage.qml \
     qml/pages/ImageViewerPage.qml \
+    qml/pages/ImageEditorPage.qml \
+    qml/pages/PinchZoom.qml \
     qml/pages/SegmentSelector.qml \
     qml/pages/TagsPage.qml \
     qml/pages/PlaylistBuilderPage.qml \
     qml/pages/PlaylistsPage.qml \
     qml/pages/CoverPickerPage.qml \
     qml/images/rootgpt-avatar.png \
+    qml/images/harbour-rootheater.svg \
+    harbour-rootheater-open-url.desktop \
     rpm/harbour-rootheater.spec \
     rpm/harbour-rootheater.yaml \
     rpm/harbour-rootheater.changes \

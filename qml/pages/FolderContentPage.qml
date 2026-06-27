@@ -179,6 +179,15 @@ Page {
         if (selectionMode && selectedCount === 0)
             selectionMode = false
     }
+    // Splice freshly created files (e.g. an image-editor "_edit" copy) into the
+    // model so they show up without a full folder rescan.
+    function addItems(newItems) {
+        if (!newItems || newItems.length === 0) return
+        allItems = allItems.concat(newItems)
+        rebuild()
+        if (owner && typeof owner.addItems === "function")
+            owner.addItems(newItems)
+    }
     function confirmDelete(paths) {
         if (paths.length === 0) return
         var msg = paths.length === 1 ? qsTr("Deleting")
@@ -211,8 +220,11 @@ Page {
             pageStack.push(Qt.resolvedUrl("PlayerPage.qml"),
                            { queue: paths, trackIndex: idx })
         } else {
+            // Open the whole folder of videos as a queue so prev/next (in-app and
+            // on the cover) skip between clips, starting at the tapped one.
+            var vpaths = page.gridItems.map(function(it) { return it.filePath })
             pageStack.push(Qt.resolvedUrl("PlayerPage.qml"),
-                           { source: page.gridItems[idx].filePath })
+                           { queue: vpaths, trackIndex: idx })
         }
     }
 

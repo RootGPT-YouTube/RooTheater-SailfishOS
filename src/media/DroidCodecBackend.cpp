@@ -38,6 +38,7 @@ extern "C" {
 
 #include <pulse/simple.h>
 #include <pulse/error.h>
+#include <pulse/def.h>
 
 #include <droidmedia.h>
 #include <droidmediacodec.h>
@@ -50,6 +51,20 @@ namespace {
 // real-time pa_simple_write paces the WHOLE pipeline (demux + video) — bounding
 // memory and keeping A/V together. ~96 packets ≈ a couple seconds of audio.
 const size_t kMaxAudioPackets = 96;
+
+// Video packet-queue depth (demux → video-feed thread). Deliberately deeper than
+// kMaxAudioPackets (~2 s) so audio backpressure stays the pipeline's pacer and the
+// ~200-290 ms decoder re-prime stall at a loop seam is absorbed here without the
+// demux ever blocking — which would also stop it feeding audio (→ PA underrun).
+const size_t kMaxVideoPackets = 120;
+
+// Distinct (non-null, non-EOF) sentinel pushed into the audio queue at a loop
+// restart. avcodec_flush_buffers() must run on the audio thread (it races the
+// concurrent decode if called from the demux thread), and must take effect at the
+// right point in the stream — so the demux marks the loop seam in-band here and the
+// audio thread flushes its decoder when it pops the marker, clearing stale state
+// from the previous lap (the source of the loop-restart audio crackle).
+AVPacket *const kAudioFlushMarker = reinterpret_cast<AVPacket *>(1);
 
 // Monotonic wall clock shared between the audio and video threads (microseconds).
 qint64 steadyNowUs()
@@ -96,6 +111,11 @@ void buffersReleasedThunk(void *) {}
 // owned copy and free it on unref.
 void rtBufRef(void *) {}
 void rtBufUnref(void *data) { free(data); }
+
+// Max decoded frames buffered between the droidmedia output thread and the present
+// thread. Small: just enough to absorb pacing/present jitter without holding many
+// gralloc buffers out of the decoder's pool (the sink holds ≤2 more).
+constexpr size_t kMaxPendingFrames = 4;
 
 } // namespace
 
@@ -155,8 +175,10 @@ void DroidCodecBackend::play(const QString &url)
     m_paused = false;
     m_firstPtsUs = -1;
     m_loopOffsetUs.store(0);
-    { std::lock_guard<std::mutex> lk(m_clockMutex); m_clockValid = false; }
+    { std::lock_guard<std::mutex> lk(m_clockMutex); m_clockValid = false; m_clockFrozen = false; }
     emit postState(Opening);
+    m_presentThread = std::thread([this]() { presentLoop(); });
+    m_videoFeedThread = std::thread([this]() { videoFeedLoop(); });
     m_demuxThread = std::thread([this]() { demuxLoop(); });
 }
 
@@ -164,6 +186,7 @@ void DroidCodecBackend::pause()
 {
     if (m_state == Playing) {
         m_paused = true;
+        freezeClock(true);   // stop the master clock so it doesn't run away while paused
         emit postState(Paused);
     }
 }
@@ -176,6 +199,7 @@ void DroidCodecBackend::togglePause()
         m_paused = false;
         // Re-anchor the clock so we don't fast-forward to catch up.
         m_firstPtsUs = -1;
+        freezeClock(false);   // resume the master clock from where it paused
         emit postState(Playing);
     }
 }
@@ -188,10 +212,25 @@ void DroidCodecBackend::stop()
     // thread (it may be blocked pushing to a full queue), then join both.
     m_aqNotEmpty.notify_all();
     m_aqNotFull.notify_all();
+    // Wake the present thread (waiting on an empty queue) and onFrameAvailable (it
+    // may be blocked pushing to a full queue).
+    m_frameQNotEmpty.notify_all();
+    m_frameQNotFull.notify_all();
+    // Wake the video-feed thread (waiting on an empty queue) and the demux (it may be
+    // blocked pushing video to a full queue).
+    m_vqNotEmpty.notify_all();
+    m_vqNotFull.notify_all();
     if (m_demuxThread.joinable())
         m_demuxThread.join();
     if (m_audioThread.joinable())
         m_audioThread.join();
+    // Join the video-feed thread (it frees any unsubmitted copies on exit) and the
+    // present thread (it drains/releases any queued buffers) BEFORE destroying the
+    // codec, else a later queue/release hits a dead codec.
+    if (m_videoFeedThread.joinable())
+        m_videoFeedThread.join();
+    if (m_presentThread.joinable())
+        m_presentThread.join();
     // Return the sink's pinned buffers to the pool BEFORE destroying the codec
     // (the buffer queue dies with it), else a later release is use-after-free.
     if (m_sink)
@@ -372,29 +411,29 @@ void DroidCodecBackend::demuxLoop()
 
     auto submit = [&](AVPacket *p) {
         // droidmedia may hold the input data past the call and frees it via the
-        // unref callback, so hand it an owned copy (not the AVPacket's buffer).
+        // unref callback, so build an owned copy (not the AVPacket's buffer) here on
+        // the demux thread, then hand it to the video-feed thread, which does the
+        // (possibly blocking) droid_media_codec_queue. Keeping the blocking call off
+        // the demux thread is what stops a loop-seam re-prime stall starving audio.
         void *copy = malloc(static_cast<size_t>(p->size));
         if (!copy)
             return;
         std::memcpy(copy, p->data, static_cast<size_t>(p->size));
 
-        DroidMediaCodecData d;
-        std::memset(&d, 0, sizeof(d));
-        d.data.data = copy;
-        d.data.size = p->size;
-        d.ts = ((p->pts != AV_NOPTS_VALUE)
-                ? av_rescale_q(p->pts, st->time_base, AVRational{1, 1000000}) : 0)
-               + m_loopOffsetUs.load();   // keep fed ts monotonic across loops
-        d.sync = (p->flags & AV_PKT_FLAG_KEY) != 0;
+        VideoPacket vp;
+        vp.data = copy;
+        vp.size = p->size;
+        vp.ts = ((p->pts != AV_NOPTS_VALUE)
+                 ? av_rescale_q(p->pts, st->time_base, AVRational{1, 1000000}) : 0)
+                + m_loopOffsetUs.load();   // keep fed ts monotonic across loops
+        vp.sync = (p->flags & AV_PKT_FLAG_KEY) != 0;
 
-        // Non-null callbacks are REQUIRED: droid_media_codec_queue dereferences
-        // this pointer (passing null crashes inside libdroidmedia at +0x12c4c).
-        DroidMediaBufferCallbacks cb;
-        std::memset(&cb, 0, sizeof(cb));
-        cb.ref = &rtBufRef;
-        cb.unref = &rtBufUnref;   // frees the copy when droidmedia is done
-        cb.data = copy;
-        droid_media_codec_queue(m_codec, &d, &cb);
+        std::unique_lock<std::mutex> lk(m_vqMutex);
+        m_vqNotFull.wait(lk, [this] { return m_stop || m_vq.size() < kMaxVideoPackets; });
+        if (m_stop) { lk.unlock(); free(copy); return; }
+        m_vq.push_back(vp);
+        lk.unlock();
+        m_vqNotEmpty.notify_one();
     };
 
     while (!m_stop) {
@@ -408,6 +447,13 @@ void DroidCodecBackend::demuxLoop()
                 m_loopOffsetUs.fetch_add(m_fmt->duration);
                 av_seek_frame(m_fmt, -1, 0, AVSEEK_FLAG_BACKWARD);
                 if (m_bsf) av_bsf_flush(m_bsf);
+                // Mark the loop seam in-band so the audio thread flushes its decoder
+                // before the next lap's packets (avoids the restart crackle).
+                if (m_hasAudio) {
+                    std::lock_guard<std::mutex> lk(m_aqMutex);
+                    m_aq.push_back(kAudioFlushMarker);
+                    m_aqNotEmpty.notify_one();
+                }
                 continue;
             }
             break;
@@ -452,12 +498,64 @@ void DroidCodecBackend::demuxLoop()
         m_aqNotEmpty.notify_one();
     }
 
+    // Tell the video-feed thread to drain the decoder (end-of-stream) AFTER it has
+    // submitted every queued packet — an in-band null marker, not a direct drain
+    // here, because the demux raced ahead and m_vq may still be draining.
     if (!m_stop) {
-        droid_media_codec_drain(m_codec);
-        emit postState(Ended);
+        std::lock_guard<std::mutex> lk(m_vqMutex);
+        m_vq.push_back(VideoPacket{nullptr, 0, 0, false});
+        m_vqNotEmpty.notify_one();
     }
     av_packet_free(&pkt);
     av_packet_free(&out);
+}
+
+void DroidCodecBackend::videoFeedLoop()
+{
+    while (!m_stop) {
+        if (m_paused) { QThread::msleep(20); continue; }
+
+        VideoPacket vp;
+        {
+            std::unique_lock<std::mutex> lk(m_vqMutex);
+            m_vqNotEmpty.wait(lk, [this] { return m_stop || !m_vq.empty(); });
+            if (m_stop) break;
+            vp = m_vq.front();
+            m_vq.pop_front();
+            lk.unlock();
+            m_vqNotFull.notify_one();
+        }
+
+        if (!vp.data) {                       // EOF marker: signal end-of-stream
+            droid_media_codec_drain(m_codec);
+            emit postState(Ended);
+            continue;
+        }
+
+        DroidMediaCodecData d;
+        std::memset(&d, 0, sizeof(d));
+        d.data.data = vp.data;
+        d.data.size = vp.size;
+        d.ts = vp.ts;
+        d.sync = vp.sync;
+
+        // Non-null callbacks are REQUIRED: droid_media_codec_queue dereferences this
+        // pointer (passing null crashes inside libdroidmedia at +0x12c4c).
+        DroidMediaBufferCallbacks cb;
+        std::memset(&cb, 0, sizeof(cb));
+        cb.ref = &rtBufRef;
+        cb.unref = &rtBufUnref;   // frees the copy when droidmedia is done
+        cb.data = vp.data;
+        droid_media_codec_queue(m_codec, &d, &cb); // may block on decoder input
+    }
+
+    // Stopping: free any copies not yet handed to the codec (the codec frees the
+    // ones it already took via the unref callback).
+    std::lock_guard<std::mutex> lk(m_vqMutex);
+    for (const auto &vp : m_vq)
+        free(vp.data);
+    m_vq.clear();
+    m_vqNotFull.notify_all();
 }
 
 void DroidCodecBackend::audioLoop()
@@ -488,6 +586,10 @@ void DroidCodecBackend::audioLoop()
         AVPacket *pkt = nullptr;
         if (!popPacket(&pkt, &eof))
             break;
+        if (pkt == kAudioFlushMarker) {        // loop seam: clear stale decoder state
+            avcodec_flush_buffers(m_audioCtx);
+            continue;
+        }
         if (avcodec_send_packet(m_audioCtx, pkt) == 0 || eof) { /* keep draining on eof */ }
         av_packet_free(&pkt);
 
@@ -513,8 +615,17 @@ void DroidCodecBackend::audioLoop()
                 ss.format = PA_SAMPLE_S16LE;
                 ss.rate = m_outRate;
                 ss.channels = m_outChannels;
+                // Cap the buffer to ~150 ms. The server default is much larger
+                // (~300 ms), so audio only becomes audible after a long prefill;
+                // video then has to wait that long for the master clock at startup
+                // (the residual startup hitch). A smaller buffer makes audio audible
+                // sooner — shorter startup wait — while staying well clear of
+                // underruns at 30 fps. Other fields = (uint32_t)-1 ⇒ server default.
+                pa_buffer_attr attr;
+                std::memset(&attr, 0xFF, sizeof(attr));
+                attr.tlength = (static_cast<uint32_t>(m_outRate) * m_outChannels * 2) * 150 / 1000;
                 m_pa = pa_simple_new(nullptr, "RooTheater", PA_STREAM_PLAYBACK, nullptr,
-                                     "playback", &ss, nullptr, nullptr, &err);
+                                     "playback", &ss, nullptr, &attr, &err);
                 if (!m_pa) { qWarning("DroidCodec: pa_simple_new failed: %s", pa_strerror(err)); m_hasAudio = false; goto done; }
                 qInfo("DroidCodec: PulseAudio stream opened");
             }
@@ -562,10 +673,30 @@ int DroidCodecBackend::sizeChangedCb(void *, int32_t, int32_t)
 
 void DroidCodecBackend::setAudioAnchor(qint64 audibleUs)
 {
+    // The raw measurement audibleUs = (audio pts − PulseAudio latency) is JUMPY:
+    // pa_simple_get_latency() is quantised to PA's fragment size, so it advances in
+    // ~80 ms stair-steps. Re-anchoring the master clock to it every audio frame made
+    // masterClockUs() step instead of run smoothly, and any video frame landing on a
+    // step's riser over-slept by up to a fragment (~80 ms), blocking the decoder
+    // output thread → the periodic startup stutter.
+    //
+    // Instead keep a free-running clock and only SLEW it toward the measurement: a
+    // proportional low-pass that rejects the quantisation noise while still tracking
+    // the true (real-time) audio playhead. A large discontinuity (seek/loop restart)
+    // still snaps so we don't slew across a gap for seconds.
     std::lock_guard<std::mutex> lk(m_clockMutex);
-    m_clockBaseUs = audibleUs;
-    m_clockBaseAtUs = steadyNowUs();
-    m_clockValid = true;
+    const qint64 now = steadyNowUs();
+    if (!m_clockValid) {
+        m_clockBaseUs = audibleUs;
+        m_clockBaseAtUs = now;
+        m_clockValid = true;
+        return;
+    }
+    const qint64 projected = m_clockBaseUs + (now - m_clockBaseAtUs);
+    const qint64 err = audibleUs - projected;
+    // ±300 ms ⇒ a real discontinuity, not jitter: snap. Otherwise slew by err/8.
+    m_clockBaseUs   = (err > 300000 || err < -300000) ? audibleUs : projected + err / 8;
+    m_clockBaseAtUs = now;
 }
 
 qint64 DroidCodecBackend::masterClockUs()
@@ -573,14 +704,31 @@ qint64 DroidCodecBackend::masterClockUs()
     std::lock_guard<std::mutex> lk(m_clockMutex);
     if (!m_clockValid)
         return -1;
+    if (m_clockFrozen)               // paused: hold the clock where it was
+        return m_clockBaseUs;
     return m_clockBaseUs + (steadyNowUs() - m_clockBaseAtUs);
+}
+
+void DroidCodecBackend::freezeClock(bool freeze)
+{
+    std::lock_guard<std::mutex> lk(m_clockMutex);
+    if (freeze == m_clockFrozen || !m_clockValid)
+        { m_clockFrozen = freeze; return; }
+    const qint64 now = steadyNowUs();
+    if (freeze)
+        m_clockBaseUs += now - m_clockBaseAtUs; // capture the value at pause
+    m_clockBaseAtUs = now;                       // resume continues from that value
+    m_clockFrozen = freeze;
 }
 
 void DroidCodecBackend::onFrameAvailable(_DroidMediaBuffer *buffer)
 {
-    // Runs on the droidmedia output thread: read the buffer timestamp, pace
-    // against the master (audio) clock, post the position, then hand the gralloc
-    // buffer to the zero-copy sink.
+    // Runs on the droidmedia output thread. Do NOT pace here — that would block the
+    // next frame's delivery. Read the timestamp and hand the buffer to the present
+    // thread, which paces it. Backpressure (queue full) is the only wait, and it
+    // applies only when we are genuinely ahead, not for every frame's full duration.
+    if (m_stop) { droid_media_buffer_release(buffer, nullptr, nullptr); return; }
+
     DroidMediaBufferInfo info;
     std::memset(&info, 0, sizeof(info));
     droid_media_buffer_get_info(buffer, &info);
@@ -588,8 +736,48 @@ void DroidCodecBackend::onFrameAvailable(_DroidMediaBuffer *buffer)
     // Buffer-queue timestamps follow the Android graphics convention: nanoseconds.
     // (Verified by the per-frame delta in the log; ~33e6 ⇒ ns @ 30fps.) Audio pts
     // and this share one timeline: video us == ts/1000 == absolute file time.
-    const qint64 ts = info.timestamp;
-    const qint64 vptsUs = ts / 1000;
+    const qint64 vptsUs = info.timestamp / 1000;
+
+    std::unique_lock<std::mutex> lk(m_frameQMutex);
+    m_frameQNotFull.wait(lk, [this] { return m_stop || m_frameQ.size() < kMaxPendingFrames; });
+    if (m_stop) { lk.unlock(); droid_media_buffer_release(buffer, nullptr, nullptr); return; }
+    m_frameQ.push_back({ buffer, vptsUs });
+    lk.unlock();
+    m_frameQNotEmpty.notify_one();
+}
+
+void DroidCodecBackend::presentLoop()
+{
+    while (true) {
+        // Honour pause here too: otherwise the thread keeps draining frames already
+        // decoded/buffered ahead (present queue + decoder output pool) against the
+        // free-running master clock, so the picture coasts ~1 s past the pause press.
+        if (m_paused && !m_stop) { QThread::msleep(20); continue; }
+        PendingFrame f;
+        {
+            std::unique_lock<std::mutex> lk(m_frameQMutex);
+            m_frameQNotEmpty.wait(lk, [this] { return m_stop || !m_frameQ.empty(); });
+            if (m_stop) break;
+            f = m_frameQ.front();
+            m_frameQ.pop_front();
+            lk.unlock();
+            m_frameQNotFull.notify_one();
+        }
+        paceAndPresent(f.buf, f.vptsUs);
+    }
+    // Stopping: release any buffers still queued before the codec is torn down.
+    std::lock_guard<std::mutex> lk(m_frameQMutex);
+    for (const auto &f : m_frameQ)
+        droid_media_buffer_release(f.buf, nullptr, nullptr);
+    m_frameQ.clear();
+    m_frameQNotFull.notify_all();
+}
+
+void DroidCodecBackend::paceAndPresent(_DroidMediaBuffer *buffer, qint64 vptsUs)
+{
+    // Runs on the present thread: pace against the master (audio) clock, post the
+    // position, then hand the gralloc buffer to the zero-copy sink.
+    const qint64 ts = vptsUs * 1000;
 
     if (m_hasAudio && masterClockUs() >= 0) {
         // A/V sync: audio is the master clock — hold the frame until audio
@@ -602,7 +790,10 @@ void DroidCodecBackend::onFrameAvailable(_DroidMediaBuffer *buffer)
         }
     } else {
         // No audio stream (or audio not started yet): pace to wall clock anchored
-        // at the first frame, as in stage 1.
+        // at the first frame, as in stage 1. (We must NOT hold here waiting for the
+        // audio clock: holding stops the present thread draining the decoder, which
+        // back-pressures the demux thread off the audio packets too, starving the
+        // very clock we'd be waiting for.)
         if (m_firstPtsUs < 0) { m_firstPtsUs = ts; m_clock.restart(); }
         const qint64 targetMs = (ts - m_firstPtsUs) / 1000000;
         const qint64 elapsed = m_clock.elapsed();
@@ -614,7 +805,17 @@ void DroidCodecBackend::onFrameAvailable(_DroidMediaBuffer *buffer)
         // Pacing uses the absolute (offset) ts to match the audio clock, but the
         // UI shows the within-loop position (offset is 0 when not looping).
         const qint64 posUs = vptsUs - m_loopOffsetUs.load();
-        emit postPosition((posUs > 0 ? posUs : 0) / 1000);
+        const qint64 posMs = (posUs > 0 ? posUs : 0) / 1000;
+        // Throttle UI position updates to ~5 Hz. Emitting every frame (30/s) floods
+        // the GUI thread (seek-bar/time-label re-eval) and, crucially, delays the
+        // queued requestUpdate that recycles decoder output buffers — starving the
+        // HW decoder and causing late frames. Always emit on a backward jump
+        // (seek/loop) so the UI snaps immediately.
+        if (m_lastPosEmitMs < 0 || posMs < m_lastPosEmitMs
+            || posMs - m_lastPosEmitMs >= 200) {
+            m_lastPosEmitMs = posMs;
+            emit postPosition(posMs);
+        }
     }
 
     // Hand the gralloc buffer to the zero-copy sink (it owns the release once it
@@ -669,12 +870,12 @@ void DroidCodecBackend::teardown()
     if (m_audioCtx) { avcodec_free_context(&m_audioCtx); m_audioCtx = nullptr; }
     {
         std::lock_guard<std::mutex> lk(m_aqMutex);
-        for (AVPacket *p : m_aq) if (p) av_packet_free(&p);
+        for (AVPacket *p : m_aq) if (p && p != kAudioFlushMarker) av_packet_free(&p);
         m_aq.clear();
     }
     m_audioStream = -1;
     m_hasAudio = false;
-    { std::lock_guard<std::mutex> lk(m_clockMutex); m_clockValid = false; }
+    { std::lock_guard<std::mutex> lk(m_clockMutex); m_clockValid = false; m_clockFrozen = false; }
 
     if (m_fmt) { avformat_close_input(&m_fmt); m_fmt = nullptr; }
     m_videoStream = -1;

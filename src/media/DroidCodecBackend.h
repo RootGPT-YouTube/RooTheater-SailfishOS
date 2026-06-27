@@ -125,7 +125,11 @@ private:
     static int sizeChangedCb(void *data, int32_t width, int32_t height);
 
     void demuxLoop();                 // runs on m_demuxThread
+    void videoFeedLoop();             // runs on m_videoFeedThread
     void audioLoop();                 // runs on m_audioThread
+    void presentLoop();               // runs on m_presentThread
+    // Pace one decoded frame against the master clock, then hand it to the sink.
+    void paceAndPresent(_DroidMediaBuffer *buffer, qint64 vptsUs);
     bool openInput(const QString &url);
     bool openAudio();                 // best-effort; video plays even if this fails
     void teardown();
@@ -166,10 +170,41 @@ private:
     // so video pacing is smooth instead of stepping at the audio-frame cadence.
     std::mutex m_clockMutex;
     bool m_clockValid = false;        // false ⇒ no audio yet → video uses wall clock
+    bool m_clockFrozen = false;       // true while paused ⇒ clock stops extrapolating
     qint64 m_clockBaseUs = 0;         // audible audio pts at the anchor
     qint64 m_clockBaseAtUs = 0;       // steady-clock time (us) of the anchor
     void setAudioAnchor(qint64 audibleUs);
     qint64 masterClockUs();           // interpolated audio clock, or -1 if invalid
+    void freezeClock(bool freeze);    // pause/resume: stop the clock running away
+
+    // Decoupled present: onFrameAvailable() enqueues the decoded gralloc buffer and
+    // returns at once, so a pacing wait never runs on the droidmedia output thread.
+    // That thread serialises frame delivery — an in-callback sleep blocks the NEXT
+    // frame and makes the HW decoder deliver in bursts (the startup stutter).
+    // m_presentThread pops frames and paces them instead. The
+    // bounded depth gives natural backpressure and caps gralloc buffers held out of
+    // the decoder's pool (sink holds ≤2 more).
+    struct PendingFrame { _DroidMediaBuffer *buf; qint64 vptsUs; };
+    std::deque<PendingFrame> m_frameQ;
+    std::mutex m_frameQMutex;
+    std::condition_variable m_frameQNotEmpty;
+    std::condition_variable m_frameQNotFull;
+    std::thread m_presentThread;
+
+    // Decoupled video feed: the demux thread must NOT call droid_media_codec_queue
+    // directly — it blocks ~200-290 ms while the decoder re-primes at a loop seam,
+    // and the same thread also feeds m_aq, so a video stall would starve audio and
+    // underrun PulseAudio (the loop-restart crackle). The demux builds the input
+    // copy + timestamp here and m_videoFeedThread does the (blocking) codec queue.
+    // Deeper than m_aq so audio backpressure paces the pipeline and a re-prime stall
+    // is absorbed without the demux ever blocking off the audio feed. data == null is
+    // an EOF marker telling the feed thread to drain the decoder (end-of-stream).
+    struct VideoPacket { void *data; int size; qint64 ts; bool sync; };
+    std::deque<VideoPacket> m_vq;
+    std::mutex m_vqMutex;
+    std::condition_variable m_vqNotEmpty;
+    std::condition_variable m_vqNotFull;
+    std::thread m_videoFeedThread;
 
     // worker + pacing
     std::thread m_demuxThread;
@@ -177,6 +212,7 @@ private:
     std::atomic<bool> m_paused{false};
     QElapsedTimer m_clock;            // wall clock since first frame (no-audio fallback)
     qint64 m_firstPtsUs = -1;         // pts of first presented frame
+    qint64 m_lastPosEmitMs = -1;      // last UI position emit (throttle to ~5 Hz)
     QString m_url;
     qint64 m_startMs = 0;             // seek target applied by openInput on restart
     // Loop: when the demux hits EOF it seeks back to 0 and keeps feeding the SAME

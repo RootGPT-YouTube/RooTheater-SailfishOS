@@ -63,8 +63,8 @@
 <context>
     <name>CoverPage</name>
     <message>
-        <source>Player</source>
-        <translation>Player</translation>
+        <source>Multimedia player</source>
+        <translation>Multimedia player</translation>
     </message>
 </context>
 <context>
@@ -236,8 +236,8 @@
         <translation>No media found</translation>
     </message>
     <message>
-        <source>Create playlist</source>
-        <translation>Create playlist</translation>
+        <source>Create audio playlist</source>
+        <translation>Create audio playlist</translation>
     </message>
     <message>
         <source>Album cover</source>
@@ -262,6 +262,52 @@
     <message>
         <source>Create video playlist</source>
         <translation>Create video playlist</translation>
+    </message>
+</context>
+<context>
+    <name>ImageEditor</name>
+    <message>
+        <source>Could not open image</source>
+        <translation>Could not open image</translation>
+    </message>
+    <message>
+        <source>Could not save image</source>
+        <translation>Could not save image</translation>
+    </message>
+</context>
+<context>
+    <name>ImageEditorPage</name>
+    <message>
+        <source>Save a copy</source>
+        <translation>Save a copy</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>Undo</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>Reset</translation>
+    </message>
+    <message>
+        <source>Crop</source>
+        <translation>Crop</translation>
+    </message>
+    <message>
+        <source>Draw</source>
+        <translation>Draw</translation>
+    </message>
+    <message>
+        <source>Stroke width</source>
+        <translation>Stroke width</translation>
+    </message>
+    <message>
+        <source>Drag the edges or corners</source>
+        <translation>Drag the edges or corners</translation>
+    </message>
+    <message>
+        <source>Save copy</source>
+        <translation>Save copy</translation>
     </message>
 </context>
 <context>
@@ -336,6 +382,30 @@
         <source>Track %1 / %2</source>
         <translation>Track %1 / %2</translation>
     </message>
+    <message>
+        <source>Decoding</source>
+        <translation>Decoding</translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation>Automatic</translation>
+    </message>
+    <message>
+        <source>Hardware (droidmedia)</source>
+        <translation>Hardware (droidmedia)</translation>
+    </message>
+    <message>
+        <source>Software (libVLC)</source>
+        <translation>Software (libVLC)</translation>
+    </message>
+    <message>
+        <source>Video</source>
+        <translation>Video</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>Audio</translation>
+    </message>
 </context>
 <context>
     <name>PlaylistBuilderPage</name>
@@ -368,8 +438,8 @@
         <translation>%1 selected</translation>
     </message>
     <message>
-        <source>Create playlist</source>
-        <translation>Create playlist</translation>
+        <source>Create audio playlist</source>
+        <translation>Create audio playlist</translation>
     </message>
     <message>
         <source>Playlist name</source>

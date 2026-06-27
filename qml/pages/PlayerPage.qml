@@ -19,6 +19,10 @@ Page {
     property int trackIndex: 0
     readonly property bool albumMode: queue.length > 1
 
+    // Optional cover image for the whole queue (a playlist's chosen cover). Takes
+    // priority over a track's embedded art on the app cover. "" = none.
+    property string playlistCover: ""
+
     // Auto-hide the controls during playback; tap toggles them.
     property bool controlsVisible: true
 
@@ -31,6 +35,15 @@ Page {
     // the direct zero-copy HW decode path (DroidCodecBackend + DroidVideoSink).
     // Set false to fall back to the QtMultimedia baseline for those files.
     property bool droidEnabled: true
+
+    // Manual decode override (additive — the default is the engine's auto pick).
+    // "" = automatic, "hw" = force droidmedia HW, "sw" = force libVLC software.
+    // Deliberately NOT persistent: it lives on this page instance, so it resets to
+    // automatic when the video is closed (a fresh PlayerPage), but is kept across
+    // loops and album tracks. The engine's auto choice is remembered here so
+    // switching back to "Automatic" can restore it without re-probing.
+    property string decodeOverride: ""
+    property string recommendedBackendStr: "qt"   // "qt" | "vlc" | "droid" (auto pick)
 
     // ── Unified control surface over whichever backend is active ─────────────
     readonly property bool isPlaying: backend === "vlc" ? vlc.playing
@@ -87,6 +100,80 @@ Page {
         seekTo(Math.max(0, Math.min(durationMs, positionMs + deltaMs)))
     }
 
+    // ── App cover (audio/video): title from metadata, fallback to file name ──
+    function coverDisplayTitle() {
+        if (coverTag.title && coverTag.title !== "")
+            return coverTag.title
+        var s = page.source
+        var n = s.substring(s.lastIndexOf('/') + 1)
+        var dot = n.lastIndexOf('.')
+        return dot > 0 ? n.substring(0, dot) : n
+    }
+    // Subtitle: album/playlist name when known, else just the media kind.
+    function coverDisplaySubtitle() {
+        if (coverTag.album && coverTag.album !== "")
+            return coverTag.album
+        return engine.hasVideo ? qsTr("Video") : qsTr("Audio")
+    }
+    function pushCover() {
+        coverState.mode = "media"
+        coverState.title = coverDisplayTitle()
+        coverState.subtitle = coverDisplaySubtitle()
+        coverState.coverArt = page.playlistCover !== ""
+            ? page.playlistCover
+            : ((engine.valid && engine.hasCover) ? engine.coverSource : "")
+        coverState.playing = page.isPlaying
+    }
+
+    // Metadata reader feeding the cover title/subtitle.
+    TagReader { id: coverTag; filePath: page.source }
+    Connections {
+        target: coverTag
+        onTagsChanged: if (coverState.mode === "media") {
+            coverState.title = page.coverDisplayTitle()
+            coverState.subtitle = page.coverDisplaySubtitle()
+        }
+    }
+    // Cover CoverAction taps routed back to the live player.
+    Connections {
+        target: coverState
+        onPlayPauseRequested: page.togglePlay()
+        onNextRequested: page.albumMode ? page.playNext() : page.step(10000)
+    }
+    onIsPlayingChanged: if (coverState.mode === "media") coverState.playing = page.isPlaying
+    onSourceChanged: pushCover()
+
+    // Resolve the backend to actually use: the manual override if set, else the
+    // engine's auto pick. Forcing HW falls back to the QtMultimedia baseline when
+    // the direct droid path is disabled.
+    function targetBackend() {
+        if (page.decodeOverride === "hw")
+            return page.droidEnabled ? "droid" : "qt"
+        if (page.decodeOverride === "sw")
+            return "vlc"
+        return page.recommendedBackendStr
+    }
+
+    // Stop whatever is playing and (re)start the current source on the resolved
+    // backend. Used by the engine probe and by the decode-mode selector.
+    function routeAndPlay() {
+        var b = targetBackend()
+        player.stop(); vlc.stop(); droid.stop()
+        errorLabel.text = ""
+        page.backend = b
+        // qt/vlc honour the container's display rotation; the raw HW droid path
+        // doesn't, so apply it ourselves there. Others start upright.
+        page.videoRotation = (b === "droid") ? engine.rotation : 0
+        if (b === "vlc")
+            vlc.play(page.source)
+        else if (b === "droid")
+            droid.play(page.source)
+        else {
+            player.source = page.source
+            player.play()
+        }
+    }
+
     // Album mode: switch to track `i`, tear down the current backend and re-probe
     // so engine.onProbed routes + starts it like any fresh source.
     function loadTrack(i) {
@@ -113,33 +200,27 @@ Page {
     }
 
     onStatusChanged: {
-        if (status === PageStatus.Active && source !== "")
+        if (status === PageStatus.Active && source !== "") {
             engine.probe(source) // playback starts in engine.onProbed
+            pushCover()
+        }
     }
 
     // C++ media-engine facade: ffmpeg demux/probe + capability-driven backend pick.
     MediaEngine {
         id: engine
         onProbed: {
+            // Remember the engine's auto pick, then route via routeAndPlay() so a
+            // manual decode override (if any) is honoured. (e.g. phone-camera clips
+            // tagged -90 get their rotation applied on the raw HW droid path there.)
             if (recommendedBackend === MediaEngine.Libvlc)
-                page.backend = "vlc"
+                page.recommendedBackendStr = "vlc"
             else if (recommendedBackend === MediaEngine.Droidmedia && page.droidEnabled)
-                page.backend = "droid"
+                page.recommendedBackendStr = "droid"
             else
-                page.backend = "qt"
-            // qt/vlc already honour the container's display rotation; the raw HW
-            // droid path doesn't, so apply it ourselves there (e.g. phone-camera
-            // clips tagged -90). Other backends start upright.
-            page.videoRotation = (page.backend === "droid") ? engine.rotation : 0
-
-            if (page.backend === "vlc") {
-                vlc.play(page.source)
-            } else if (page.backend === "droid") {
-                droid.play(page.source)
-            } else {
-                player.source = page.source
-                player.play()
-            }
+                page.recommendedBackendStr = "qt"
+            page.routeAndPlay()
+            page.pushCover()   // refresh cover subtitle now hasVideo is known
         }
     }
 
@@ -158,60 +239,69 @@ Page {
             errorLabel.text = errorString
         }
     }
-    VideoOutput {
-        id: videoOutput
-        anchors.centerIn: parent
-        width: page.videoTurned ? parent.height : parent.width
-        height: page.videoTurned ? parent.width : parent.height
-        rotation: page.videoRotation
-        source: player
-        fillMode: VideoOutput.PreserveAspectFit
-        visible: page.backend === "qt"
-    }
+    // Two-finger pinch zooms the video, a one-finger drag then pans it and a
+    // double tap restores 1×; a single tap toggles the controls. Wraps all three
+    // render surfaces so zoom works whichever backend is active.
+    PinchZoom {
+        id: zoom
+        anchors.fill: parent
+        onClicked: controls.visible = !controls.visible
 
-    // ── Backends 2 & 3: libVLC (Layer 3) and droidmedia (Layer 1) both render
-    // their CPU-decoded frames into the shared VideoSurface. ─────────────────
-    VlcBackend {
-        id: vlc
-        videoOutput: frameSurface
-        onStateChanged: {
-            if (state === VlcBackend.Error) {
-                controls.visible = true
-                errorLabel.text = qsTr("libVLC playback error")
-            } else if (state === VlcBackend.Ended && page.loopEnabled) {
-                page.restart()
+        VideoOutput {
+            id: videoOutput
+            anchors.centerIn: parent
+            width: page.videoTurned ? parent.height : parent.width
+            height: page.videoTurned ? parent.width : parent.height
+            rotation: page.videoRotation
+            source: player
+            fillMode: VideoOutput.PreserveAspectFit
+            visible: page.backend === "qt"
+        }
+
+        // ── Backends 2 & 3: libVLC (Layer 3) and droidmedia (Layer 1) both render
+        // their CPU-decoded frames into the shared VideoSurface. ─────────────────
+        VlcBackend {
+            id: vlc
+            videoOutput: frameSurface
+            onStateChanged: {
+                if (state === VlcBackend.Error) {
+                    controls.visible = true
+                    errorLabel.text = qsTr("libVLC playback error")
+                } else if (state === VlcBackend.Ended && page.loopEnabled) {
+                    page.restart()
+                }
             }
         }
-    }
-    DroidCodecBackend {
-        id: droid
-        videoSink: droidSink
-        loop: page.loopEnabled    // looped in-pipeline (no teardown) by the backend
-        onStateChanged: {
-            if (state === DroidCodecBackend.Error) {
-                controls.visible = true
-                errorLabel.text = qsTr("Hardware decode error")
+        DroidCodecBackend {
+            id: droid
+            videoSink: droidSink
+            loop: page.loopEnabled    // looped in-pipeline (no teardown) by the backend
+            onStateChanged: {
+                if (state === DroidCodecBackend.Error) {
+                    controls.visible = true
+                    errorLabel.text = qsTr("Hardware decode error")
+                }
             }
         }
-    }
-    // libVLC (CPU frames) renders here.
-    VideoSurface {
-        id: frameSurface
-        anchors.centerIn: parent
-        width: page.videoTurned ? parent.height : parent.width
-        height: page.videoTurned ? parent.width : parent.height
-        rotation: page.videoRotation
-        visible: page.backend === "vlc"
-    }
-    // droidmedia zero-copy (EGLImage → GL_TEXTURE_EXTERNAL_OES) renders here.
-    DroidVideoSink {
-        id: droidSink
-        anchors.centerIn: parent
-        width: page.videoTurned ? parent.height : parent.width
-        height: page.videoTurned ? parent.width : parent.height
-        rotation: page.videoRotation
-        visible: page.backend === "droid"
-    }
+        // libVLC (CPU frames) renders here.
+        VideoSurface {
+            id: frameSurface
+            anchors.centerIn: parent
+            width: page.videoTurned ? parent.height : parent.width
+            height: page.videoTurned ? parent.width : parent.height
+            rotation: page.videoRotation
+            visible: page.backend === "vlc"
+        }
+        // droidmedia zero-copy (EGLImage → GL_TEXTURE_EXTERNAL_OES) renders here.
+        DroidVideoSink {
+            id: droidSink
+            anchors.centerIn: parent
+            width: page.videoTurned ? parent.height : parent.width
+            height: page.videoTurned ? parent.width : parent.height
+            rotation: page.videoRotation
+            visible: page.backend === "droid"
+        }
+    }   // PinchZoom
 
     // Audio-only media: show the embedded cover art, or a ♪ placeholder when the
     // file has none. (The cover is served in-memory via the rtcover provider.)
@@ -257,11 +347,6 @@ Page {
         wrapMode: Text.WordWrap
         color: Theme.errorColor
         visible: text.length > 0
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        onClicked: controls.visible = !controls.visible
     }
 
     // Playback controls overlay.
@@ -396,6 +481,30 @@ Page {
                 font.pixelSize: Theme.fontSizeSmall
                 text: page.formatTime(page.positionMs) + " / " + page.formatTime(page.durationMs)
             }
+
+            // Manual decode-mode selector (additive; default = Automatic). Picking a
+            // mode reloads the current source on that backend. Not persistent: resets
+            // to Automatic when the video is closed, kept across loops/tracks.
+            ComboBox {
+                width: parent.width
+                visible: engine.valid
+                label: qsTr("Decoding")
+                currentIndex: 0   // 0 = Automatic, 1 = Hardware, 2 = Software
+                menu: ContextMenu {
+                    MenuItem { text: qsTr("Automatic") }
+                    MenuItem { text: qsTr("Hardware (droidmedia)") }
+                    MenuItem { text: qsTr("Software (libVLC)") }
+                }
+                onCurrentIndexChanged: {
+                    var ov = currentIndex === 1 ? "hw"
+                           : (currentIndex === 2 ? "sw" : "")
+                    if (ov === page.decodeOverride)
+                        return
+                    page.decodeOverride = ov
+                    if (engine.valid)
+                        page.routeAndPlay()
+                }
+            }
         }
     }
 
@@ -414,5 +523,6 @@ Page {
         player.stop()
         vlc.stop()
         droid.stop()
+        coverState.clear()
     }
 }

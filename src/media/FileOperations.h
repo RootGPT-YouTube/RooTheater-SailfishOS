@@ -22,6 +22,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 
 // Tiny QML-facing helper for the gallery: QML can't delete files on its own,
 // so deletion (single or batch) is routed through here. Paths may arrive as
@@ -45,6 +46,11 @@ public:
     // Reads `path` and returns its contents as UTF-8 text (empty string if the
     // file can't be read). Used to load a saved .m3u8 playlist for playback.
     Q_INVOKABLE QString readTextFile(const QString &path);
+
+    // Stats a file into the same shape the gallery model emits per item
+    // ({ filePath, fileName, mimeType, size, modified }). Used to splice a freshly
+    // saved (image-editor) file into a folder view without a full rescan.
+    Q_INVOKABLE QVariantMap fileInfo(const QString &path);
 };
 
 #endif // FILEOPERATIONS_H

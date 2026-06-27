@@ -116,7 +116,8 @@ Page {
             return
         }
         pageStack.push(Qt.resolvedUrl("PlayerPage.qml"),
-                       { queue: paths, trackIndex: 0 })
+                       { queue: paths, trackIndex: 0,
+                         playlistCover: page.coverSource(playlistPath) })
     }
 
     RemorsePopup { id: remorse }

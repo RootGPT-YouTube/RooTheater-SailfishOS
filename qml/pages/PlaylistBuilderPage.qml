@@ -112,7 +112,7 @@ Page {
                 title: page.selectedCount > 0
                        ? qsTr("%1 selected").arg(page.selectedCount)
                        : (page.isVideo ? qsTr("Create video playlist")
-                                       : qsTr("Create playlist"))
+                                       : qsTr("Create audio playlist"))
             }
 
             Label {

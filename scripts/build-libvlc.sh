@@ -155,6 +155,13 @@ vendor() {
         mkdir -p "$DST/lib/vlc"
         cp -a "$STAGE/usr/lib/vlc/plugins" "$DST/lib/vlc/"
     fi
+    # libpulse_plugin.so dipende da libvlc_pulse.so.0 (NON un *_plugin.so, quindi lo
+    # step 'stage' coi soli lib*_plugin.so non lo prende). L'app lo preloada da
+    # lib/vlc/; senza, il modulo d'uscita pulse non si carica e libVLC è muto.
+    if [ -f "$B/build-$ARCH/modules/.libs/libvlc_pulse.so.0.0.0" ]; then
+        mkdir -p "$DST/lib/vlc"
+        cp -f "$B/build-$ARCH/modules/.libs/libvlc_pulse.so.0.0.0" "$DST/lib/vlc/libvlc_pulse.so.0"
+    fi
     # header pubblici (una volta)
     if [ ! -d "$PROJ/vlc/include/vlc" ]; then
         mkdir -p "$PROJ/vlc/include"

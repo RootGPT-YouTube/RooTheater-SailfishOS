@@ -137,7 +137,7 @@ Page {
                                           { owner: page, mediaType: "video" })
             }
             MenuItem {
-                text: qsTr("Create playlist")
+                text: qsTr("Create audio playlist")
                 onClicked: pageStack.push(Qt.resolvedUrl("PlaylistBuilderPage.qml"),
                                           { owner: page, mediaType: "audio" })
             }
