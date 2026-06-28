@@ -87,7 +87,6 @@ update-desktop-database %{_datadir}/applications &> /dev/null || :
 %{_bindir}/%{name}
 %{_datadir}/%{name}
 %{_datadir}/applications/%{name}.desktop
-%{_datadir}/dbus-1/services/com.github.RootGPT_YouTube.rootheater.service
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 # >> files
 # << files

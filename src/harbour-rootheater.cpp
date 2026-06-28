@@ -41,6 +41,7 @@
 #include "media/FileOperations.h"
 #include "media/ImageEditor.h"
 #include "media/OpenHandler.h"
+#include "media/ShareHandler.h"
 #include "media/CoverState.h"
 #ifdef HAVE_LIBVLC
 #include "media/VlcBackend.h"
@@ -102,11 +103,18 @@ int main(int argc, char *argv[])
         openHandler->setInitialPath(a);
         break;
     }
+    // "Share with" (Transfer Engine): sailfish-share calls org.sailfishos.share
+    // .share(a{sv}) on /share/<method-id> of our bus name; the method id comes
+    // from the .desktop X-Share-Methods (rootheater_share). Separate object from
+    // OpenHandler but routed the same way.
+    ShareHandler *shareHandler = new ShareHandler(app.data());
     {
         const QString busName = QStringLiteral("com.github.RootGPT_YouTube.rootheater");
         const QString objPath = QStringLiteral("/com/github/RootGPT_YouTube/rootheater");
+        const QString sharePath = QStringLiteral("/share/rootheater_share");
         QDBusConnection bus = QDBusConnection::sessionBus();
         bus.registerObject(objPath, openHandler, QDBusConnection::ExportAllSlots);
+        bus.registerObject(sharePath, shareHandler, QDBusConnection::ExportAllSlots);
         bus.registerService(busName);
     }
     // Bring the window forward when a file (or bare activation) arrives.
@@ -114,7 +122,10 @@ int main(int argc, char *argv[])
                      [&view](const QString &) { view->raise(); });
     QObject::connect(openHandler, &OpenHandler::activated,
                      [&view]() { view->raise(); });
+    QObject::connect(shareHandler, &ShareHandler::shareRequested,
+                     [&view](const QString &) { view->raise(); });
     view->rootContext()->setContextProperty("openHandler", openHandler);
+    view->rootContext()->setContextProperty("shareHandler", shareHandler);
 
     // Shared playback state for the app cover (written by the viewer/player).
     CoverState *coverState = new CoverState(app.data());

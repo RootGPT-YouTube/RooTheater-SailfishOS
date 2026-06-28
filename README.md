@@ -61,9 +61,10 @@ hardware via gst-droid) con i controlli di riproduzione essenziali.
 
 RooTheater builds with the **Sailfish SDK** (`sfdk`). This public repository
 ships the application sources and the *vendoring scripts*, but **not** the
-prebuilt native dependencies (FFmpeg static libraries, libVLC `.so` + plugins):
-you regenerate those per architecture with the scripts below. This keeps the
-repo light while still providing the *corresponding source* required by the
+prebuilt native dependencies (FFmpeg static libraries, libVLC `.so` + plugins).
+You can either **download the prebuilt vendor archive** from the Releases page
+(fast) or **regenerate them per architecture** with the scripts below. This keeps
+the repo light while still providing the *corresponding source* required by the
 LGPL/GPL components (see [NOTICE.md](NOTICE.md)).
 
 **Prerequisites**
@@ -85,21 +86,24 @@ LGPL/GPL components (see [NOTICE.md](NOTICE.md)).
    sfdk engine exec sb2 -t SailfishOS-5.0.0.62-<arch>.default \
         -m sdk-install -R zypper -n in droidmedia-devel
    ```
-3. **Vendor FFmpeg** — static PIC `.a`, built LGPL (no `--enable-gpl`, no x264):
-   ```sh
-   bash scripts/build-ffmpeg.sh <arch>      # → ffmpeg/<arch>/lib/*.a
-   ```
-4. **Vendor libVLC** — bundled `.so` + plugins; long, builds VLC's contrib
-   (incl. its own FFmpeg) from source:
-   ```sh
-   bash scripts/build-libvlc.sh <arch>      # → vlc/<arch>/lib + vlc/<arch>/lib/vlc/plugins
-   ```
-5. **Build the RPM**:
+3. **Get the vendored dependencies** (FFmpeg + libVLC) — either option works:
+   - **Download (fast):** grab `rootheater-vendor-<version>.tar.zst` from the
+     [Releases](https://github.com/RootGPT-YouTube/RooTheater-SailfishOS/releases)
+     page and extract it at the repo root:
+     ```sh
+     tar --zstd -xf rootheater-vendor-<version>.tar.zst   # → ffmpeg/<arch>/ + vlc/<arch>/
+     ```
+   - **Or rebuild from source** (the LGPL/GPL *corresponding source*):
+     ```sh
+     bash scripts/build-ffmpeg.sh <arch>      # → ffmpeg/<arch>/lib/*.a (static PIC, LGPL)
+     bash scripts/build-libvlc.sh <arch>      # → vlc/<arch>/lib + .../vlc/plugins (long)
+     ```
+4. **Build the RPM**:
    ```sh
    sfdk -c target=SailfishOS-5.0.0.62-<arch> build
    # → RPMS/harbour-rootheater-<version>-1.<arch>.rpm
    ```
-6. **Install on the device** (copy the RPM over, then on the phone):
+5. **Install on the device** (copy the RPM over, then on the phone):
    ```sh
    sudo pkcon install-local --allow-untrusted harbour-rootheater-<version>-1.<arch>.rpm
    ```
@@ -112,16 +116,17 @@ LGPL/GPL components (see [NOTICE.md](NOTICE.md)).
   to confirm every layer is active.
 - On **i486** the scripts disable x86 assembly automatically (the SFOS i486
   target ships no nasm/yasm).
-- For a full 3-architecture release, repeat steps 2–5 for each `<arch>`.
+- For a full 3-architecture release, repeat steps 2–4 for each `<arch>`.
 
 ## Compilare dai sorgenti (Italiano)
 
 RooTheater si compila con il **Sailfish SDK** (`sfdk`). Questo repository
 pubblico contiene i sorgenti dell'app e gli *script di vendoring*, ma **non** le
 dipendenze native precompilate (librerie statiche di FFmpeg, `.so` + plugin di
-libVLC): le rigeneri per architettura con gli script qui sotto. Così il repo
-resta leggero pur fornendo la *corresponding source* richiesta dai componenti
-LGPL/GPL (vedi [NOTICE.md](NOTICE.md)).
+libVLC). Puoi **scaricare l'archivio vendor precompilato** dalla pagina Releases
+(veloce) oppure **rigenerarle per architettura** con gli script qui sotto. Così
+il repo resta leggero pur fornendo la *corresponding source* richiesta dai
+componenti LGPL/GPL (vedi [NOTICE.md](NOTICE.md)).
 
 **Prerequisiti**
 - Il [Sailfish SDK](https://docs.sailfishos.org/Tools/Sailfish_SDK/) installato,
@@ -142,22 +147,24 @@ LGPL/GPL (vedi [NOTICE.md](NOTICE.md)).
    sfdk engine exec sb2 -t SailfishOS-5.0.0.62-<arch>.default \
         -m sdk-install -R zypper -n in droidmedia-devel
    ```
-3. **Vendorizza FFmpeg** — `.a` statiche PIC, compilate LGPL (niente
-   `--enable-gpl`, niente x264):
-   ```sh
-   bash scripts/build-ffmpeg.sh <arch>      # → ffmpeg/<arch>/lib/*.a
-   ```
-4. **Vendorizza libVLC** — `.so` + plugin bundlati; lunga, compila i contrib di
-   VLC (incluso il suo FFmpeg) da sorgente:
-   ```sh
-   bash scripts/build-libvlc.sh <arch>      # → vlc/<arch>/lib + vlc/<arch>/lib/vlc/plugins
-   ```
-5. **Compila l'RPM**:
+3. **Procurati le dipendenze vendorizzate** (FFmpeg + libVLC) — vanno bene entrambe:
+   - **Scarica (veloce):** prendi `rootheater-vendor-<versione>.tar.zst` dalla pagina
+     [Releases](https://github.com/RootGPT-YouTube/RooTheater-SailfishOS/releases)
+     ed estrailo nella radice del repo:
+     ```sh
+     tar --zstd -xf rootheater-vendor-<versione>.tar.zst   # → ffmpeg/<arch>/ + vlc/<arch>/
+     ```
+   - **Oppure ricompila da sorgente** (la *corresponding source* LGPL/GPL):
+     ```sh
+     bash scripts/build-ffmpeg.sh <arch>      # → ffmpeg/<arch>/lib/*.a (statiche PIC, LGPL)
+     bash scripts/build-libvlc.sh <arch>      # → vlc/<arch>/lib + .../vlc/plugins (lunga)
+     ```
+4. **Compila l'RPM**:
    ```sh
    sfdk -c target=SailfishOS-5.0.0.62-<arch> build
    # → RPMS/harbour-rootheater-<versione>-1.<arch>.rpm
    ```
-6. **Installa sul dispositivo** (copia l'RPM, poi sul telefono):
+5. **Installa sul dispositivo** (copia l'RPM, poi sul telefono):
    ```sh
    sudo pkcon install-local --allow-untrusted harbour-rootheater-<versione>-1.<arch>.rpm
    ```
@@ -170,7 +177,7 @@ LGPL/GPL (vedi [NOTICE.md](NOTICE.md)).
   enabled") per confermare che ogni layer sia attivo.
 - Su **i486** gli script disabilitano automaticamente l'assembly x86 (il target
   SFOS i486 non ha nasm/yasm).
-- Per un rilascio completo a 3 architetture, ripeti i passi 2–5 per ogni `<arch>`.
+- Per un rilascio completo a 3 architetture, ripeti i passi 2–4 per ogni `<arch>`.
 
 ## License
 

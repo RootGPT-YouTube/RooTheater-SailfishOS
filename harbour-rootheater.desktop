@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-X-Nemo-Application-Type=generic
+X-Nemo-Application-Type=silica-qt5
 Icon=harbour-rootheater
 Exec=harbour-rootheater %U
 Name=RooTheater
@@ -11,8 +11,16 @@ MimeType=image/*;video/*;audio/*;application/x-mpegURL;application/vnd.apple.mpe
 X-Maemo-Service=com.github.RootGPT_YouTube.rootheater
 X-Maemo-Object-Path=/com/github/RootGPT_YouTube/rootheater
 X-Maemo-Method=org.freedesktop.Application.openUrl
+X-Share-Methods=rootheater_share;
+
+[X-Share Method rootheater_share]
+Description=Open in RooTheater
+Description[it]=Apri in RooTheater
+Capabilities=image/*;video/*;audio/*;
+SupportsMultipleFiles=no
 
 [X-Sailjail]
 Permissions=Audio;Videos;Music;Pictures;Documents;Downloads;RemovableMedia;UserDirs;Internet
 OrganizationName=com.github.RootGPT_YouTube
 ApplicationName=rootheater
+ExecDBus=harbour-rootheater

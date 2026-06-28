@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=com.github.RootGPT_YouTube.rootheater
-Exec=/usr/bin/invoker -s --type=generic /usr/bin/sailjail -p harbour-rootheater.desktop /usr/bin/harbour-rootheater

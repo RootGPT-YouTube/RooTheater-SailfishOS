@@ -62,6 +62,11 @@ ApplicationWindow {
         onOpenRequested: app.scheduleOpen(path)
     }
 
+    Connections {
+        target: shareHandler
+        onShareRequested: app.scheduleOpen(path)
+    }
+
     Component.onCompleted: {
         // A file handed to us at launch is waiting in pendingUrl.
         if (openHandler.pendingUrl !== "")

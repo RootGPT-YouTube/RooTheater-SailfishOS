@@ -38,7 +38,8 @@ SOURCES += src/harbour-rootheater.cpp \
     src/media/MediaGalleryModel.cpp \
     src/media/FileOperations.cpp \
     src/media/ImageEditor.cpp \
-    src/media/OpenHandler.cpp
+    src/media/OpenHandler.cpp \
+    src/media/ShareHandler.cpp
 
 HEADERS += src/media/MediaProbe.h \
     src/media/MediaEngine.h \
@@ -52,6 +53,7 @@ HEADERS += src/media/MediaProbe.h \
     src/media/FileOperations.h \
     src/media/ImageEditor.h \
     src/media/OpenHandler.h \
+    src/media/ShareHandler.h \
     src/media/CoverState.h
 
 # License compliance: the GPLv3 text (and, as bundled libs land, their
@@ -61,13 +63,12 @@ licenses.files = $$PWD/LICENSE $$PWD/NOTICE.md
 licenses.path = /usr/share/$${TARGET}/licenses
 INSTALLS += licenses
 
-# D-Bus service file: lets dbus-daemon auto-start RooTheater (via invoker +
-# sailjail) when Sailfish's content-action framework invokes openUrl for a media
-# file, so the file is delivered even when the app is not already running. The
-# .desktop X-Maemo-Service/Object-Path/Method point here.
-dbusservice.files = $$PWD/com.github.RootGPT_YouTube.rootheater.service
-dbusservice.path = /usr/share/dbus-1/services
-INSTALLS += dbusservice
+# D-Bus activation is handled by Sailjail: the .desktop [X-Sailjail] ExecDBus key
+# makes it auto-generate the session service for our bus name
+# (com.github.RootGPT_YouTube.rootheater) with the correct booster/sandbox launch,
+# so "Open with" (org.freedesktop.Application.Open) and "Share with" auto-start
+# the app. A hand-written /usr/share/dbus-1/services file is NOT used — it would
+# double-sandbox (invoker→sailjail→firejail) and fail to launch.
 
 # ffmpeg is always linked (static facade, scripts/build-ffmpeg.sh) → its LGPL
 # texts ship unconditionally. (Built without --enable-gpl/x264, so LGPL only.)
@@ -98,7 +99,6 @@ DISTFILES += LICENSE \
     qml/pages/CoverPickerPage.qml \
     qml/images/rootgpt-avatar.png \
     qml/images/harbour-rootheater.svg \
-    com.github.RootGPT_YouTube.rootheater.service \
     rpm/harbour-rootheater.spec \
     rpm/harbour-rootheater.yaml \
     rpm/harbour-rootheater.changes \
