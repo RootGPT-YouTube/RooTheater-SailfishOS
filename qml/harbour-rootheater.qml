@@ -36,14 +36,35 @@ ApplicationWindow {
         }
     }
 
+    // Defer the open by one event-loop tick: Qt.callLater is unavailable on the
+    // SailfishOS Qt (5.6), and at launch the open arrives before pageStack is
+    // ready, so route through a 0-interval Timer instead.
+    property string _pendingMedia: ""
+    Timer {
+        id: openTimer
+        interval: 1
+        repeat: false
+        onTriggered: {
+            var p = app._pendingMedia
+            app._pendingMedia = ""
+            app.openMedia(p)
+        }
+    }
+    function scheduleOpen(path) {
+        if (!path || path === "")
+            return
+        app._pendingMedia = path
+        openTimer.restart()
+    }
+
     Connections {
         target: openHandler
-        onOpenRequested: Qt.callLater(app.openMedia, path)
+        onOpenRequested: app.scheduleOpen(path)
     }
 
     Component.onCompleted: {
-        // A file passed at launch (Exec … %U) is waiting in pendingUrl.
+        // A file handed to us at launch is waiting in pendingUrl.
         if (openHandler.pendingUrl !== "")
-            Qt.callLater(app.openMedia, openHandler.pendingUrl)
+            app.scheduleOpen(openHandler.pendingUrl)
     }
 }

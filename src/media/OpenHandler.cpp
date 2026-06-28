@@ -59,6 +59,12 @@ void OpenHandler::ActivateAction(const QString &, const QVariantList &, const QV
     // No app-specific actions are exported.
 }
 
+void OpenHandler::openUrl(const QStringList &uris)
+{
+    if (!uris.isEmpty())
+        handle(uris.first());
+}
+
 void OpenHandler::openUrl(const QString &url)
 {
     handle(url);

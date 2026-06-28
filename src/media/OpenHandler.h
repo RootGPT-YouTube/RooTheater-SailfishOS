@@ -25,11 +25,14 @@
 #include <QVariantMap>
 #include <QVariantList>
 
-// Implements the freedesktop org.freedesktop.Application D-Bus interface so that
-// SailfishOS can register RooTheater as a MIME handler and hand it files to open
-// ("Open with…" / default app). The bus name + object path are derived from the
-// .desktop X-Sailjail OrganizationName/ApplicationName; declaring ExecDBus there
-// makes Sailjail auto-generate the service file and grant us that bus name.
+// Implements the freedesktop org.freedesktop.Application D-Bus interface that
+// SailfishOS uses to hand a file to a MIME handler. Qt.openUrlExternally and the
+// "Open with" sheet call org.freedesktop.Application.Open(as,a{sv}) on our bus
+// name (com.github.RootGPT_YouTube.rootheater) / object path — both derived from
+// the .desktop X-Sailjail OrganizationName/ApplicationName. A shipped D-Bus
+// .service file auto-starts us (invoker + sailjail) so the call is delivered even
+// when the app is not already running. The .desktop X-Maemo-* keys add a second,
+// content-action route to openUrl() on the SAME interface.
 //
 // Also stores a path passed on the command line at launch (Exec … %U). The QML
 // root listens to openRequested()/pendingUrl and routes to the viewer or player.
@@ -52,10 +55,12 @@ public slots:
     void ActivateAction(const QString &actionName, const QVariantList &parameter,
                         const QVariantMap &platformData);
 
-    // Single-argument open used by the Sailfish content-action route (the
-    // NoDisplay "open-url" .desktop with X-Maemo-Service/Object-Path/Method).
-    // Exported on the same object, so the .desktop's X-Maemo-Method names it
-    // under the org.freedesktop.Application interface.
+    // Sailfish's content-action framework (libcontentaction, what
+    // Qt.openUrlExternally and the "Open with" sheet use) invokes the .desktop's
+    // X-Maemo-Method with the URIs as a string *array* (D-Bus signature "as") —
+    // this overload is the one that actually fires. The single-string variant
+    // below stays for callers that pass one URI ("s").
+    void openUrl(const QStringList &uris);
     void openUrl(const QString &url);
 
 signals:

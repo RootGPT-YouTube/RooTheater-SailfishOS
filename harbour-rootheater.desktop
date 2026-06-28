@@ -3,15 +3,16 @@ Type=Application
 X-Nemo-Application-Type=generic
 Icon=harbour-rootheater
 Exec=harbour-rootheater %U
-X-DBusActivatable=true
 Name=RooTheater
 Name[it]=RooTheater
 Comment=Multimedia player
 Comment[it]=Lettore multimediale
 MimeType=image/*;video/*;audio/*;application/x-mpegURL;application/vnd.apple.mpegurl;
+X-Maemo-Service=com.github.RootGPT_YouTube.rootheater
+X-Maemo-Object-Path=/com/github/RootGPT_YouTube/rootheater
+X-Maemo-Method=org.freedesktop.Application.openUrl
 
 [X-Sailjail]
 Permissions=Audio;Videos;Music;Pictures;Documents;Downloads;RemovableMedia;UserDirs;Internet
 OrganizationName=com.github.RootGPT_YouTube
 ApplicationName=rootheater
-ExecDBus=/usr/bin/harbour-rootheater --dbus
