@@ -52,7 +52,16 @@ cd "$B"
 # release tarball https (il git è solo nel ramo USE_LIBAV inattivo).
 # Esportiamo i tool cross espliciti: nel build-shell `gcc` è il cross, ma i
 # Makefile dei contrib costruiscono i nomi come $(HOST)-gcc, che NON esistono.
-CONTRIB_PKGS="${CONTRIB_PKGS:-.ffmpeg}"
+# .gnutls: TLS client per libvlc. SENZA, libvlc non ha alcun modulo TLS ("TLS
+# client plugin not available") e NON apre URL https:// — gli stream HLS/DASH reali
+# danno schermo nero. (mbedtls, piu' leggero, NON e' nei contrib di VLC 3.0.21;
+# l'unico TLS disponibile e' gnutls.) make trascina le sue deps nettle/gmp/libtasn1;
+# i contrib sono statici, quindi gnutls+deps si linkano dentro libgnutls_plugin.so
+# e il vendor step lo raccoglie gia' con cp lib*_plugin.so (nessuna .so extra).
+# .dvbpsi: serve al demuxer MPEG-TS di libvlc (libts_plugin). SENZA, gli stream
+# HLS in TS (il formato IPTV piu' diffuso) falliscono con "Failed to create
+# demuxer TS". (L'HLS in fMP4 usa invece libmp4, gia' presente.)
+CONTRIB_PKGS="${CONTRIB_PKGS:-.ffmpeg .gnutls .dvbpsi}"
 build_contrib() {
 # i486: the SFOS target ships no nasm/yasm, so VLC's contrib ffmpeg (x86) needs
 # --disable-x86asm (else configure aborts: "nasm/yasm not found"); and its older
@@ -93,6 +102,12 @@ export BUILDCC=host-gcc
 # il path di sistema del sb2 (dove sta libpulse ecc.). NB: usare LIBDIR lo
 # sostituirebbe, nascondendo le lib del target.
 export PKG_CONFIG_PATH='$PREFIX/lib/pkgconfig'
+# gnutls contrib e' statico: VLC usa pkg-config NON-static (solo -lgnutls), e il
+# plugin gnutls non linka (undefined nettle_*). Pre-impostiamo GNUTLS_LIBS con le
+# deps statiche (gnutls -> hogweed/nettle/gmp); PKG_CHECK_MODULES la tratta come
+# variabile precious e salta la propria probe.
+export GNUTLS_CFLAGS=\"-I'$PREFIX'/include\"
+export GNUTLS_LIBS=\"\$(pkg-config --static --libs gnutls)\"
 mkdir -p '$B/build-$ARCH' && cd '$B/build-$ARCH'
 '$SRC'/configure --host='$HOST' --prefix=/usr \
   --disable-vlc --disable-nls --disable-update-check \
@@ -115,9 +130,9 @@ mkdir -p '$B/build-$ARCH' && cd '$B/build-$ARCH'
   --disable-libass --disable-freetype --disable-fribidi --disable-harfbuzz \
   --disable-fontconfig --disable-svg --disable-svgdec --disable-sdl-image \
   --disable-aribb24 --disable-aribb25 \
-  --disable-dvdread --disable-dvdnav --disable-bluray --disable-dvbpsi \
+  --disable-dvdread --disable-dvdnav --disable-bluray --enable-dvbpsi \
   --disable-live555 --disable-libtar --disable-libxml2 --disable-libarchive \
-  --disable-gnutls --disable-libgcrypt --disable-secret --disable-libsecret \
+  --enable-gnutls --disable-libgcrypt --disable-secret --disable-libsecret \
   --disable-chromaprint --disable-caca --disable-goom --disable-projectm --disable-vsxu \
   --disable-libplacebo --disable-jack --disable-chromecast --disable-microdns --disable-upnp
 make -j\$(nproc)

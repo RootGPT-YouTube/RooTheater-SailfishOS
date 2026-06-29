@@ -45,6 +45,12 @@ Page {
     property string decodeOverride: ""
     property string recommendedBackendStr: "qt"   // "qt" | "vlc" | "droid" (auto pick)
 
+    // Set once we've auto-fallen-back from the HW (droid) path to software (libVLC)
+    // for the current source, so a second droid failure can't loop. Reset by
+    // routeAndPlay() on every fresh start/probe/track. The fallback is suppressed
+    // when the user explicitly forced "Hardware" in the Decoding selector.
+    property bool autoFellBack: false
+
     // ── Unified control surface over whichever backend is active ─────────────
     readonly property bool isPlaying: backend === "vlc" ? vlc.playing
         : backend === "droid" ? droid.playing
@@ -154,12 +160,51 @@ Page {
         return page.recommendedBackendStr
     }
 
+    // Friendly name of the backend ACTUALLY playing (page.backend) — not the engine's
+    // original pick — so the header reflects an auto fallback (droid→vlc) or a manual
+    // Decoding override. Names match MediaEngine::recommendedBackendName().
+    function activeBackendName() {
+        return page.backend === "droid" ? "droidmedia (HW)"
+             : page.backend === "vlc" ? "libVLC"
+             : "QtMultimedia"
+    }
+
     // Stop whatever is playing and (re)start the current source on the resolved
     // backend. Used by the engine probe and by the decode-mode selector.
+    // A droidmedia failure carries an ErrorKind; turn it into an accurate message
+    // instead of always blaming the hardware decoder (the old behaviour hid network
+    // and demux faults behind "Hardware decode error").
+    function decodeErrorText(kind) {
+        switch (kind) {
+        case DroidCodecBackend.ErrNetwork:
+            return qsTr("Network error: can't reach the stream")
+        case DroidCodecBackend.ErrDemux:
+            return qsTr("Can't read this media (unsupported or corrupt container)")
+        case DroidCodecBackend.ErrUnsupported:
+            return qsTr("Unsupported format")
+        case DroidCodecBackend.ErrDecode:
+            return qsTr("Hardware decode error")
+        default:
+            return qsTr("Playback error")
+        }
+    }
+
+    // Auto HW→SW fallback: when the droid HW decoder can't handle a stream (a profile
+    // it rejects, or a container quirk), retry once on libVLC before showing an error.
+    function fallbackToSoftware() {
+        page.autoFellBack = true
+        player.stop(); vlc.stop(); droid.stop()
+        errorLabel.text = ""
+        page.backend = "vlc"
+        page.videoRotation = 0
+        vlc.play(page.source)
+    }
+
     function routeAndPlay() {
         var b = targetBackend()
         player.stop(); vlc.stop(); droid.stop()
         errorLabel.text = ""
+        page.autoFellBack = false   // fresh start: allow a fallback again
         page.backend = b
         // qt/vlc honour the container's display rotation; the raw HW droid path
         // doesn't, so apply it ourselves there. Others start upright.
@@ -278,8 +323,18 @@ Page {
             loop: page.loopEnabled    // looped in-pipeline (no teardown) by the backend
             onStateChanged: {
                 if (state === DroidCodecBackend.Error) {
+                    // Recoverable HW fault (rejected profile, TS quirk) → silently
+                    // retry on libVLC software, unless the user forced HW or we've
+                    // already fallen back once for this source.
+                    var k = droid.errorKind
+                    if (!page.autoFellBack && page.decodeOverride !== "hw"
+                            && (k === DroidCodecBackend.ErrDecode
+                                || k === DroidCodecBackend.ErrUnsupported)) {
+                        page.fallbackToSoftware()
+                        return
+                    }
                     controls.visible = true
-                    errorLabel.text = qsTr("Hardware decode error")
+                    errorLabel.text = page.decodeErrorText(k)
                 }
             }
         }
@@ -384,7 +439,7 @@ Page {
                 text: engine.probing
                       ? qsTr("Analyzing…")
                       : (engine.valid
-                         ? qsTr("Backend: %1").arg(engine.recommendedBackendName)
+                         ? qsTr("Backend: %1").arg(page.activeBackendName())
                          : qsTr("Probe failed: %1").arg(engine.errorString))
             }
             Label {

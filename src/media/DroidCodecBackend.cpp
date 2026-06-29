@@ -19,6 +19,7 @@
 #include "DroidCodecBackend.h"
 #include "DroidCodec.h"
 #include "DroidVideoSink.h"
+#include "MediaProbe.h"   // shared network avformat options (protocol whitelist, UA)
 
 #include <QUrl>
 #include <QThread>
@@ -91,6 +92,58 @@ const CodecMap *mapFor(AVCodecID id)
     for (const auto &m : kCodecs)
         if (m.id == id) return &m;
     return nullptr;
+}
+
+// Scan an Annex-B H.264 bitstream for the first SPS (NAL type 7) and PPS (type 8),
+// returned WITHOUT start codes but WITH their NAL header byte (as avcC wants them).
+// Handles both 3- and 4-byte start codes. Returns true once both are found.
+bool extractSpsPps(const uint8_t *d, int size, QByteArray &sps, QByteArray &pps)
+{
+    int i = 0;
+    while (i + 3 <= size) {
+        if (!(d[i] == 0 && d[i + 1] == 0 && d[i + 2] == 1)) { ++i; continue; }
+        const int nalStart = i + 3;
+        int j = nalStart;
+        while (j + 3 <= size && !(d[j] == 0 && d[j + 1] == 0 && d[j + 2] == 1)) ++j;
+        int nalEnd = (j + 3 <= size) ? j : size;
+        // Drop the trailing zero(s) that belong to the next NAL's 4-byte start code.
+        while (nalEnd > nalStart && d[nalEnd - 1] == 0) --nalEnd;
+        if (nalEnd > nalStart) {
+            const int type = d[nalStart] & 0x1F;
+            if (type == 7 && sps.isEmpty())
+                sps = QByteArray(reinterpret_cast<const char *>(d + nalStart), nalEnd - nalStart);
+            else if (type == 8 && pps.isEmpty())
+                pps = QByteArray(reinterpret_cast<const char *>(d + nalStart), nalEnd - nalStart);
+        }
+        if (!sps.isEmpty() && !pps.isEmpty())
+            return true;
+        i = (j + 3 <= size) ? j : size;
+    }
+    return !sps.isEmpty() && !pps.isEmpty();
+}
+
+// Build an AVCDecoderConfigurationRecord (avcC) from one SPS and one PPS NAL.
+// Empty if the SPS is too short to read its profile/level triplet.
+QByteArray buildAvcc(const QByteArray &sps, const QByteArray &pps)
+{
+    if (sps.size() < 4)
+        return QByteArray();
+    QByteArray a;
+    a.reserve(11 + sps.size() + pps.size());
+    a.append(char(1));              // configurationVersion
+    a.append(sps.at(1));            // AVCProfileIndication
+    a.append(sps.at(2));            // profile_compatibility
+    a.append(sps.at(3));            // AVCLevelIndication
+    a.append(char(0xFF));           // 6 reserved bits + lengthSizeMinusOne = 3
+    a.append(char(0xE1));           // 3 reserved bits + numOfSequenceParameterSets = 1
+    a.append(char((sps.size() >> 8) & 0xFF));
+    a.append(char(sps.size() & 0xFF));
+    a.append(sps);
+    a.append(char(1));              // numOfPictureParameterSets = 1
+    a.append(char((pps.size() >> 8) & 0xFF));
+    a.append(char(pps.size() & 0xFF));
+    a.append(pps);
+    return a;
 }
 
 // C thunks for the codec's output DroidMediaBufferQueue (its callback arg types
@@ -268,20 +321,34 @@ bool DroidCodecBackend::openInput(const QString &url)
 {
     const QString path = QUrl(url).isLocalFile() ? QUrl(url).toLocalFile() : url;
     const QByteArray src = path.toUtf8();
+    const QString scheme = QUrl(url).scheme();
+    const bool isNetwork = !scheme.isEmpty() && scheme != QLatin1String("file");
+    m_errorKind = ErrNone;
 
-    if (avformat_open_input(&m_fmt, src.constData(), nullptr, nullptr) < 0)
-        { qWarning("DroidCodec: avformat_open_input failed"); return false; }
+    // Without these options ffmpeg parses an HLS/DASH playlist but is then blocked
+    // from fetching its http(s) segments, so av_read_frame never yields a packet and
+    // the codec errors out — surfacing (misleadingly) as "Hardware decode error".
+    AVDictionary *opts = nullptr;
+    MediaProbe::applyNetworkOptions(&opts);
+    int rc = avformat_open_input(&m_fmt, src.constData(), nullptr, &opts);
+    av_dict_free(&opts);
+    if (rc < 0) {
+        // A failed open of a network URL is almost always the connection (DNS, TCP,
+        // TLS, 4xx/5xx); a local file that won't open is a bad/unreadable container.
+        m_errorKind = isNetwork ? ErrNetwork : ErrDemux;
+        qWarning("DroidCodec: avformat_open_input failed"); return false;
+    }
     if (avformat_find_stream_info(m_fmt, nullptr) < 0)
-        { qWarning("DroidCodec: find_stream_info failed"); return false; }
+        { m_errorKind = ErrDemux; qWarning("DroidCodec: find_stream_info failed"); return false; }
 
     m_videoStream = av_find_best_stream(m_fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     if (m_videoStream < 0)
-        { qWarning("DroidCodec: no video stream"); return false; }
+        { m_errorKind = ErrUnsupported; qWarning("DroidCodec: no video stream"); return false; }
 
     AVStream *st = m_fmt->streams[m_videoStream];
     const CodecMap *cm = mapFor(st->codecpar->codec_id);
     if (!cm)
-        { qWarning("DroidCodec: codec %d not mapped", st->codecpar->codec_id); return false; }
+        { m_errorKind = ErrUnsupported; qWarning("DroidCodec: codec %d not mapped", st->codecpar->codec_id); return false; }
 
     // openInput runs on the worker thread; marshal duration/seekable to the GUI
     // thread so the NOTIFY signals fire there (QML never saw them before, which
@@ -300,11 +367,11 @@ bool DroidCodecBackend::openInput(const QString &url)
     if (cm->bsf) {
         const AVBitStreamFilter *f = av_bsf_get_by_name(cm->bsf);
         if (!f || av_bsf_alloc(f, &m_bsf) < 0)
-            { qWarning("DroidCodec: bsf %s alloc failed", cm->bsf); return false; }
+            { m_errorKind = ErrDecode; qWarning("DroidCodec: bsf %s alloc failed", cm->bsf); return false; }
         avcodec_parameters_copy(m_bsf->par_in, st->codecpar);
         m_bsf->time_base_in = st->time_base;
         if (av_bsf_init(m_bsf) < 0)
-            { qWarning("DroidCodec: bsf init failed"); return false; }
+            { m_errorKind = ErrDecode; qWarning("DroidCodec: bsf init failed"); return false; }
     }
     qInfo("DroidCodec: %s %dx%d mime=%s", cm->bsf ? cm->bsf : "raw",
           st->codecpar->width, st->codecpar->height, cm->mime);
@@ -327,17 +394,50 @@ bool DroidCodecBackend::openInput(const QString &url)
     // convertMetaDataToMessage(), which parses it as an avcC box (passing the
     // bsf's Annex-B extradata here fails with "Cannot convertMetaDataToMessage").
     // The decoded *frames* are still fed as Annex-B via the bitstream filter.
-    if (st->codecpar->extradata && st->codecpar->extradata_size > 0) {
-        meta.codec_data.size = st->codecpar->extradata_size;
-        meta.codec_data.data = st->codecpar->extradata;
+    const AVCodecParameters *vpar = st->codecpar;
+    const bool haveAvcc = vpar->extradata && vpar->extradata_size >= 7
+                          && vpar->extradata[0] == 1;
+    if (haveAvcc) {
+        meta.codec_data.size = vpar->extradata_size;
+        meta.codec_data.data = vpar->extradata;
+    } else if (vpar->codec_id == AV_CODEC_ID_H264) {
+        // MPEG-TS HLS (and raw H.264) carry no avcC — SPS/PPS are in-band Annex-B.
+        // Find them (from any annexb extradata first, else by pre-reading packets)
+        // and synthesize the avcC droidmedia needs. Pre-read packets are stashed in
+        // m_primePackets and replayed by demuxLoop() so no frames are lost.
+        QByteArray sps, pps;
+        if (vpar->extradata && vpar->extradata_size > 0)
+            extractSpsPps(vpar->extradata, vpar->extradata_size, sps, pps);
+        if (sps.isEmpty() || pps.isEmpty()) {
+            AVPacket *pp = av_packet_alloc();
+            int guard = 0;
+            while (guard++ < 200 && (sps.isEmpty() || pps.isEmpty())) {
+                if (av_read_frame(m_fmt, pp) < 0) break;
+                AVPacket *keep = av_packet_alloc();
+                av_packet_move_ref(keep, pp);
+                m_primePackets.push_back(keep);
+                if (keep->stream_index == m_videoStream)
+                    extractSpsPps(keep->data, keep->size, sps, pps);
+            }
+            av_packet_free(&pp);
+        }
+        m_codecData = buildAvcc(sps, pps);
+        if (!m_codecData.isEmpty()) {
+            meta.codec_data.size = m_codecData.size();
+            meta.codec_data.data = reinterpret_cast<uint8_t *>(m_codecData.data());
+            qInfo("DroidCodec: synthesized avcC (%d B) from in-band SPS/PPS",
+                  int(m_codecData.size()));
+        } else {
+            qWarning("DroidCodec: no in-band SPS/PPS found — decoder may fail");
+        }
     }
 
     if (!droid_media_codec_is_supported(&meta.parent, false))
-        { qWarning("DroidCodec: is_supported=false for %s", cm->mime); return false; }
+        { m_errorKind = ErrUnsupported; qWarning("DroidCodec: is_supported=false for %s", cm->mime); return false; }
 
     m_codec = droid_media_codec_create_decoder(&meta);
     if (!m_codec)
-        { qWarning("DroidCodec: create_decoder returned null"); return false; }
+        { m_errorKind = ErrDecode; qWarning("DroidCodec: create_decoder returned null"); return false; }
 
     DroidMediaCodecCallbacks cb;
     std::memset(&cb, 0, sizeof(cb));
@@ -349,7 +449,7 @@ bool DroidCodecBackend::openInput(const QString &url)
     // Output path: decoded gralloc buffers arrive on the codec's buffer queue.
     m_queue = droid_media_codec_get_buffer_queue(m_codec);
     if (!m_queue)
-        { qWarning("DroidCodec: get_buffer_queue returned null"); return false; }
+        { m_errorKind = ErrDecode; qWarning("DroidCodec: get_buffer_queue returned null"); return false; }
     DroidMediaBufferQueueCallbacks qcb;
     std::memset(&qcb, 0, sizeof(qcb));
     qcb.buffer_created = &bufferCreatedThunk;
@@ -358,7 +458,7 @@ bool DroidCodecBackend::openInput(const QString &url)
     droid_media_buffer_queue_set_callbacks(m_queue, &qcb, this);
 
     if (!droid_media_codec_start(m_codec))
-        { qWarning("DroidCodec: codec_start failed"); return false; }
+        { m_errorKind = ErrDecode; qWarning("DroidCodec: codec_start failed"); return false; }
     qInfo("DroidCodec: decoder started (buffer-queue output)");
 
     // Audio is best-effort: a failure here must not stop the (working) video.
@@ -436,6 +536,50 @@ void DroidCodecBackend::demuxLoop()
         m_vqNotEmpty.notify_one();
     };
 
+    // Route one demuxed packet to the video (bsf → submit) or the audio queue.
+    // Shared by the prime-packet replay below and the main read loop.
+    auto dispatch = [&](AVPacket *p) {
+        if (p->stream_index == m_videoStream) {
+            if (m_bsf) {
+                if (av_bsf_send_packet(m_bsf, p) == 0)
+                    while (av_bsf_receive_packet(m_bsf, out) == 0) {
+                        submit(out);
+                        av_packet_unref(out);
+                    }
+            } else {
+                submit(p);
+            }
+        } else if (m_hasAudio && p->stream_index == m_audioStream) {
+            // Hand a cloned packet to the audio thread, with backpressure: this
+            // wait is what paces the demux (and thus the whole pipeline) to the
+            // audio thread's real-time output.
+            if (AVPacket *clone = av_packet_clone(p)) {
+                // Same loop offset as the video, in the audio stream's time base,
+                // so the audio master clock stays monotonic across loops too.
+                const qint64 off = m_loopOffsetUs.load();
+                if (off > 0) {
+                    const int64_t a = av_rescale_q(off, AVRational{1, 1000000},
+                                                   m_fmt->streams[m_audioStream]->time_base);
+                    if (clone->pts != AV_NOPTS_VALUE) clone->pts += a;
+                    if (clone->dts != AV_NOPTS_VALUE) clone->dts += a;
+                }
+                std::unique_lock<std::mutex> lk(m_aqMutex);
+                m_aqNotFull.wait(lk, [this] { return m_stop || m_aq.size() < kMaxAudioPackets; });
+                if (m_stop) { lk.unlock(); av_packet_free(&clone); }
+                else { m_aq.push_back(clone); lk.unlock(); m_aqNotEmpty.notify_one(); }
+            }
+        }
+    };
+
+    // Replay packets pre-read while synthesizing the avcC (MPEG-TS), in order, so
+    // the decoder sees the stream from its first byte. Empty for containers w/ avcC.
+    for (AVPacket *p : m_primePackets) {
+        if (!m_stop)
+            dispatch(p);
+        av_packet_free(&p);
+    }
+    m_primePackets.clear();
+
     while (!m_stop) {
         if (m_paused) { QThread::msleep(20); continue; }
         if (av_read_frame(m_fmt, pkt) < 0) {
@@ -458,36 +602,7 @@ void DroidCodecBackend::demuxLoop()
             }
             break;
         }
-        if (pkt->stream_index == m_videoStream) {
-            if (m_bsf) {
-                if (av_bsf_send_packet(m_bsf, pkt) == 0)
-                    while (av_bsf_receive_packet(m_bsf, out) == 0) {
-                        submit(out);
-                        av_packet_unref(out);
-                    }
-            } else {
-                submit(pkt);
-            }
-        } else if (m_hasAudio && pkt->stream_index == m_audioStream) {
-            // Hand a cloned packet to the audio thread, with backpressure: this
-            // wait is what paces the demux (and thus the whole pipeline) to the
-            // audio thread's real-time output.
-            if (AVPacket *clone = av_packet_clone(pkt)) {
-                // Same loop offset as the video, in the audio stream's time base,
-                // so the audio master clock stays monotonic across loops too.
-                const qint64 off = m_loopOffsetUs.load();
-                if (off > 0) {
-                    const int64_t a = av_rescale_q(off, AVRational{1, 1000000},
-                                                   m_fmt->streams[m_audioStream]->time_base);
-                    if (clone->pts != AV_NOPTS_VALUE) clone->pts += a;
-                    if (clone->dts != AV_NOPTS_VALUE) clone->dts += a;
-                }
-                std::unique_lock<std::mutex> lk(m_aqMutex);
-                m_aqNotFull.wait(lk, [this] { return m_stop || m_aq.size() < kMaxAudioPackets; });
-                if (m_stop) { lk.unlock(); av_packet_free(&clone); }
-                else { m_aq.push_back(clone); lk.unlock(); m_aqNotEmpty.notify_one(); }
-            }
-        }
+        dispatch(pkt);
         av_packet_unref(pkt);
     }
 
@@ -663,7 +778,9 @@ void DroidCodecBackend::eosCb(void *data)
 void DroidCodecBackend::errorCb(void *data, int err)
 {
     qWarning("DroidCodec: codec error callback err=%d", err);
-    emit static_cast<DroidCodecBackend *>(data)->postState(Error);
+    auto *self = static_cast<DroidCodecBackend *>(data);
+    self->m_errorKind = ErrDecode;   // a runtime fault inside the HW decoder
+    emit self->postState(Error);
 }
 
 int DroidCodecBackend::sizeChangedCb(void *, int32_t, int32_t)
@@ -863,6 +980,12 @@ void DroidCodecBackend::teardown()
         m_queue = nullptr; // owned by the codec; just drop our reference
     }
     if (m_bsf) { av_bsf_free(&m_bsf); m_bsf = nullptr; }
+
+    // Pre-read prime packets (TS avcC synthesis) not consumed by demuxLoop, e.g.
+    // when openInput() failed after pre-reading. Safe to free unconditionally.
+    for (AVPacket *p : m_primePackets) av_packet_free(&p);
+    m_primePackets.clear();
+    m_codecData.clear();
 
     // Audio teardown (the audio thread is already joined by stop()).
     if (m_pa) { pa_simple_free(m_pa); m_pa = nullptr; }

@@ -6,20 +6,10 @@
 Name:       harbour-rootheater
 
 # >> macros
-# libvlc/libvlccore + i plugin VLC sono BUNDLATI sotto datadir/<name>/lib e
-# caricati via RPATH + VLC_PLUGIN_PATH. Senza queste esclusioni l'RPM:
-#  - esporterebbe i loro SONAME come Provides (rumore), e
-#  - richiederebbe libvlccore.so.9 / libvlc_pulse.so.0 come dipendenze ESTERNE
-#    non risolvibili.
-# Escludiamo i Provides di tutto ci0 che sta sotto datadir e i Requires dei
-# SONAME che soddisfiamo internamente (qualsiasi libvlc*: libvlc, libvlccore,
-# libvlc_pulse).
-%define __provides_exclude_from ^%{_datadir}/.*$
-%define __requires_exclude ^libvlc.*\\.so.*$
 # << macros
 
 Summary:    RooTheater is a multimedia player for Sailfish OS
-Version:    0.6.0
+Version:    0.7.0
 Release:    1
 Group:      Qt/Qt
 License:    GPL-3.0
@@ -33,10 +23,6 @@ BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Multimedia)
-BuildRequires:  pkgconfig(droidmedia)
-BuildRequires:  pkgconfig(egl)
-BuildRequires:  pkgconfig(glesv2)
-BuildRequires:  pkgconfig(libpulse-simple)
 BuildRequires:  desktop-file-utils
 
 %description
@@ -73,14 +59,6 @@ rm -rf %{buildroot}
 desktop-file-install --delete-original       \
   --dir %{buildroot}%{_datadir}/applications             \
    %{buildroot}%{_datadir}/applications/*.desktop
-
-# Refresh the MIME→app map so RooTheater is offered as a handler for the media
-# types in the .desktop (image/*, video/*, audio/*, …) right after install.
-%post
-update-desktop-database %{_datadir}/applications &> /dev/null || :
-
-%postun
-update-desktop-database %{_datadir}/applications &> /dev/null || :
 
 %files
 %defattr(-,root,root,-)

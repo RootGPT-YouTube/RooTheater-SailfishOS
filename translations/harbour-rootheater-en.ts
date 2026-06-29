@@ -379,6 +379,22 @@
         <translation>Hardware decode error</translation>
     </message>
     <message>
+        <source>Network error: can&apos;t reach the stream</source>
+        <translation>Network error: can&apos;t reach the stream</translation>
+    </message>
+    <message>
+        <source>Can&apos;t read this media (unsupported or corrupt container)</source>
+        <translation>Can&apos;t read this media (unsupported or corrupt container)</translation>
+    </message>
+    <message>
+        <source>Unsupported format</source>
+        <translation>Unsupported format</translation>
+    </message>
+    <message>
+        <source>Playback error</source>
+        <translation>Playback error</translation>
+    </message>
+    <message>
         <source>Track %1 / %2</source>
         <translation>Track %1 / %2</translation>
     </message>

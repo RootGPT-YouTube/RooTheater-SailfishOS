@@ -21,6 +21,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QByteArray>
 #include <QImage>
 #include <QElapsedTimer>
 #include <atomic>
@@ -59,6 +60,7 @@ class DroidCodecBackend : public QObject
     Q_PROPERTY(VideoSurface *videoOutput READ videoOutput WRITE setVideoOutput NOTIFY videoOutputChanged)
     Q_PROPERTY(DroidVideoSink *videoSink READ videoSink WRITE setVideoSink NOTIFY videoSinkChanged)
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
+    Q_PROPERTY(ErrorKind errorKind READ errorKind NOTIFY stateChanged)
     Q_PROPERTY(bool playing READ playing NOTIFY stateChanged)
     Q_PROPERTY(qlonglong position READ position NOTIFY positionChanged)
     Q_PROPERTY(qlonglong duration READ duration NOTIFY durationChanged)
@@ -68,6 +70,13 @@ class DroidCodecBackend : public QObject
 public:
     enum State { Stopped, Opening, Playing, Paused, Ended, Error };
     Q_ENUM(State)
+
+    // Why the backend went to Error — so the UI can say "network" vs "demux" vs
+    // "decode" instead of a single misleading "hardware decode error", and so the
+    // auto HW→SW fallback only kicks in for faults libVLC could actually recover
+    // (decode/unsupported), not for a dead network or unreadable container.
+    enum ErrorKind { ErrNone, ErrNetwork, ErrDemux, ErrUnsupported, ErrDecode };
+    Q_ENUM(ErrorKind)
 
     explicit DroidCodecBackend(QObject *parent = nullptr);
     ~DroidCodecBackend() override;
@@ -79,6 +88,7 @@ public:
     void setVideoSink(DroidVideoSink *sink);
 
     State state() const { return m_state; }
+    ErrorKind errorKind() const { return m_errorKind; }
     bool playing() const { return m_state == Playing; }
     qlonglong position() const { return m_positionMs; }
     qlonglong duration() const { return m_durationMs; }
@@ -137,6 +147,7 @@ private:
     VideoSurface *m_output = nullptr;
     DroidVideoSink *m_sink = nullptr;
     State m_state = Stopped;
+    ErrorKind m_errorKind = ErrNone;
     qlonglong m_positionMs = 0;
     qlonglong m_durationMs = 0;
     bool m_seekable = false;
@@ -145,6 +156,15 @@ private:
     AVFormatContext *m_fmt = nullptr;
     AVBSFContext *m_bsf = nullptr;
     int m_videoStream = -1;
+
+    // MPEG-TS (and other elementary streams) carry no avcC/hvcC config box — the
+    // H.264 SPS/PPS arrive in-band as Annex-B. droidmedia's create_decoder needs
+    // that config up front, so for such streams openInput() pre-reads packets to
+    // find the SPS/PPS, synthesizes the avcC into m_codecData, and keeps the
+    // already-read packets in m_primePackets for the demux loop to replay first
+    // (no frames lost — works for live streams that can't be rewound).
+    QByteArray m_codecData;
+    std::deque<AVPacket *> m_primePackets;
 
     // droidmedia decoder + its output gralloc buffer queue
     _DroidMediaCodec *m_codec = nullptr;

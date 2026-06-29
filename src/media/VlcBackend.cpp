@@ -69,6 +69,10 @@ VlcBackend::VlcBackend(QObject *parent)
         "--no-video-title-show",
         "--intf", "dummy",
         "--aout=pulse",
+        // Never attempt S/PDIF digital pass-through (some streams' audio makes
+        // libvlc try it and fail with "failed to create audio output"); we always
+        // decode to PCM and render through PulseAudio.
+        "--no-spdif",
     };
     m_vlc = libvlc_new(sizeof(args) / sizeof(args[0]), args);
     if (m_vlc) {

@@ -53,6 +53,17 @@ QString averr(int code)
 
 } // namespace
 
+void MediaProbe::applyNetworkOptions(AVDictionary **opts)
+{
+    // "applehttp" is ffmpeg's internal alias for the HLS demuxer; both names are
+    // accepted. tcp/tls cover the transport under http/https.
+    av_dict_set(opts, "protocol_whitelist",
+                "file,crypto,data,http,https,tcp,tls,hls,applehttp", 0);
+    av_dict_set(opts, "user_agent", "RooTheater", 0);
+    av_dict_set(opts, "reconnect", "1", 0);
+    av_dict_set(opts, "reconnect_streamed", "1", 0);
+}
+
 MediaProbe::Result MediaProbe::probe(const QString &url)
 {
     Result r;
@@ -70,7 +81,10 @@ MediaProbe::Result MediaProbe::probe(const QString &url)
     const QByteArray src = url.toUtf8();
 
     AVFormatContext *fmt = nullptr;
-    int rc = avformat_open_input(&fmt, src.constData(), nullptr, nullptr);
+    AVDictionary *opts = nullptr;
+    applyNetworkOptions(&opts);
+    int rc = avformat_open_input(&fmt, src.constData(), nullptr, &opts);
+    av_dict_free(&opts);
     if (rc < 0) {
         r.error = QStringLiteral("open failed: %1").arg(averr(rc));
         return r;
@@ -140,7 +154,11 @@ QByteArray MediaProbe::coverArt(const QString &url)
 {
     QByteArray out;
     AVFormatContext *fmt = nullptr;
-    if (avformat_open_input(&fmt, url.toUtf8().constData(), nullptr, nullptr) < 0)
+    AVDictionary *opts = nullptr;
+    applyNetworkOptions(&opts);
+    int rc = avformat_open_input(&fmt, url.toUtf8().constData(), nullptr, &opts);
+    av_dict_free(&opts);
+    if (rc < 0)
         return out;
     if (avformat_find_stream_info(fmt, nullptr) >= 0) {
         for (unsigned i = 0; i < fmt->nb_streams; ++i) {
@@ -161,7 +179,11 @@ QVariantMap MediaProbe::metadata(const QString &url)
 {
     QVariantMap out;
     AVFormatContext *fmt = nullptr;
-    if (avformat_open_input(&fmt, url.toUtf8().constData(), nullptr, nullptr) < 0)
+    AVDictionary *opts = nullptr;
+    applyNetworkOptions(&opts);
+    int rc = avformat_open_input(&fmt, url.toUtf8().constData(), nullptr, &opts);
+    av_dict_free(&opts);
+    if (rc < 0)
         return out;
     avformat_find_stream_info(fmt, nullptr);
 

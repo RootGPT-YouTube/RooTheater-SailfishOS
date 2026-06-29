@@ -49,9 +49,28 @@ below, reproducible with the build recipe shipped in `scripts/build-ffmpeg.sh` a
   GPL-2.0-or-later
 - Distribution: `libvlc` / `libvlccore` shared objects and the VLC plugins are
   **bundled** in the RPM under `/usr/share/harbour-rootheater/lib/` and loaded via
-  the binary RPATH and `VLC_PLUGIN_PATH`
+  the binary RPATH and `VLC_PLUGIN_PATH`. The TLS access (`libgnutls_plugin`) and
+  MPEG-TS demux (`libts_plugin`) plugins are built and bundled to support HTTPS
+  network streaming; they statically include the contrib libraries listed next.
 - Source / corresponding source: https://www.videolan.org/vlc/ (3.0.21) + `scripts/build-libvlc.sh`
 - License texts: `licenses/vlc/`
+
+**libVLC contrib libraries** (statically linked into the TLS / MPEG-TS plugins above)
+- Role: TLS for `https://` streams (GnuTLS + its crypto deps) and MPEG-TS
+  parsing (libdvbpsi); built from source by VLC's contrib system as part of
+  `scripts/build-libvlc.sh` and statically linked into `libgnutls_plugin.so` /
+  `libts_plugin.so` (no separate shared objects are shipped)
+- Components, versions and licenses:
+  - **GnuTLS** 3.6.16 — LGPL-2.1-or-later — https://www.gnutls.org/
+  - **Nettle** 3.7.3 — LGPL-3.0-or-later OR GPL-2.0-or-later (dual) — https://www.lysator.liu.se/~nisse/nettle/
+  - **GMP** 6.1.2 — LGPL-3.0-or-later OR GPL-2.0-or-later (dual) — https://gmplib.org/
+  - **libtasn1** 4.8 — LGPL-2.1-or-later — https://www.gnu.org/software/libtasn1/
+  - **libdvbpsi** 1.3.3 — LGPL-2.1-or-later — https://www.videolan.org/developers/libdvbpsi.html
+- Distribution: statically embedded in the two VLC plugins bundled in the RPM
+- Source / corresponding source: the upstream projects at the versions above,
+  fetched and built by `scripts/build-libvlc.sh` (VLC contrib)
+- License texts: `licenses/vlc/` (LGPL-2.1 / LGPL-3 / GPL-2 cover these too; see
+  `licenses/vlc/CONTRIB.md` for the per-library mapping)
 
 **droidmedia**
 - Role: hardware video decode through the Android HAL via libhybris (the direct

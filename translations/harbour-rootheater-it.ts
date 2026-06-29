@@ -379,6 +379,22 @@
         <translation>Errore di decodifica hardware</translation>
     </message>
     <message>
+        <source>Network error: can&apos;t reach the stream</source>
+        <translation>Errore di rete: impossibile raggiungere lo stream</translation>
+    </message>
+    <message>
+        <source>Can&apos;t read this media (unsupported or corrupt container)</source>
+        <translation>Impossibile leggere il file (formato non supportato o danneggiato)</translation>
+    </message>
+    <message>
+        <source>Unsupported format</source>
+        <translation>Formato non supportato</translation>
+    </message>
+    <message>
+        <source>Playback error</source>
+        <translation>Errore di riproduzione</translation>
+    </message>
+    <message>
         <source>Track %1 / %2</source>
         <translation>Traccia %1 / %2</translation>
     </message>

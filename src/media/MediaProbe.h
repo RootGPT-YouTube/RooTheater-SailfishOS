@@ -23,6 +23,8 @@
 #include <QByteArray>
 #include <QVariantMap>
 
+struct AVDictionary; // opaque; keeps ffmpeg headers out of this interface
+
 // MediaProbe wraps libavformat/libavcodec to inspect a media source (local file
 // or network URL) without playing it: it demuxes the container, reads the
 // stream list and reports the container/codecs/resolution/duration. This is the
@@ -74,6 +76,18 @@ public:
     // lower-cased keys. Format-level tags win; audio-stream tags fill any gaps.
     // Blocking, like probe()/coverArt() — callers run it off-thread (TagReader).
     static QVariantMap metadata(const QString &url);
+
+    // Fill `*opts` with the libavformat options every network open needs:
+    //  • protocol_whitelist — ffmpeg defaults nested sub-fetches to "file,crypto,
+    //    data", so an HLS/DASH demuxer parses the playlist but is then BLOCKED from
+    //    fetching its http(s) .ts/.m4s segments ("Protocol 'https' not on
+    //    whitelist") and never hands a frame to the decoder. We must opt the
+    //    http/tls protocols back in.
+    //  • user_agent — some CDNs 403 an empty UA.
+    //  • reconnect — survive transient drops on long streams.
+    // No-op for local files (harmless to pass). Shared by every avformat_open_input
+    // in the app (MediaProbe + the droidmedia backend) so the policy lives once.
+    static void applyNetworkOptions(AVDictionary **opts);
 
 private:
     MediaProbe() = delete;
