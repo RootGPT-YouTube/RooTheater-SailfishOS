@@ -355,6 +355,42 @@
         <source>SD card</source>
         <translation>Scheda SD</translation>
     </message>
+    <message>
+        <source>YouTube</source>
+        <translation>YouTube</translation>
+    </message>
+    <message>
+        <source>YouTube RSS</source>
+        <translation>YouTube RSS</translation>
+    </message>
+    <message>
+        <source>%1 selected</source>
+        <translation>%1 selezionati</translation>
+    </message>
+    <message>
+        <source>Deleting %1 channel(s)</source>
+        <translation>Eliminazione di %1 canali</translation>
+    </message>
+    <message>
+        <source>Mark channel as seen</source>
+        <translation>Segna canale come visto</translation>
+    </message>
+    <message>
+        <source>Mark all as seen</source>
+        <translation>Segna tutti come visti</translation>
+    </message>
+    <message>
+        <source>Select channels</source>
+        <translation>Seleziona canali</translation>
+    </message>
+    <message>
+        <source>Delete channel</source>
+        <translation>Elimina canale</translation>
+    </message>
+    <message>
+        <source>Deleting channel</source>
+        <translation>Eliminazione canale</translation>
+    </message>
 </context>
 <context>
     <name>PlayerPage</name>
@@ -558,6 +594,197 @@
     <message>
         <source>No tags</source>
         <translation>Nessun tag</translation>
+    </message>
+</context>
+<context>
+    <name>YouTubePage</name>
+    <message>
+        <source>Added: %1</source>
+        <translation>Aggiunto: %1</translation>
+    </message>
+    <message>
+        <source>%1 min ago</source>
+        <translation>%1 min fa</translation>
+    </message>
+    <message>
+        <source>%1 h ago</source>
+        <translation>%1 h fa</translation>
+    </message>
+    <message>
+        <source>%1 d ago</source>
+        <translation>%1 g fa</translation>
+    </message>
+    <message>
+        <source>Add channel</source>
+        <translation>Aggiungi canale</translation>
+    </message>
+    <message>
+        <source>Channel URL (youtube.com/@handle, /channel/UC…)</source>
+        <translation>URL canale (youtube.com/@handle, /channel/UC…)</translation>
+    </message>
+    <message>
+        <source>Channel URL</source>
+        <translation>URL canale</translation>
+    </message>
+    <message>
+        <source>Watch a video</source>
+        <translation>Guarda un video</translation>
+    </message>
+    <message>
+        <source>Video URL (youtube.com/watch?v=…, youtu.be/…)</source>
+        <translation>URL video (youtube.com/watch?v=…, youtu.be/…)</translation>
+    </message>
+    <message>
+        <source>Video URL</source>
+        <translation>URL video</translation>
+    </message>
+    <message>
+        <source>Not a valid video URL</source>
+        <translation>URL video non valido</translation>
+    </message>
+    <message>
+        <source>YouTube</source>
+        <translation>YouTube</translation>
+    </message>
+    <message>
+        <source>Import subscriptions</source>
+        <translation>Importa iscrizioni</translation>
+    </message>
+    <message>
+        <source>Export subscriptions</source>
+        <translation>Esporta iscrizioni</translation>
+    </message>
+    <message>
+        <source>Exported to %1</source>
+        <translation>Esportato in %1</translation>
+    </message>
+    <message>
+        <source>Export failed</source>
+        <translation>Esportazione fallita</translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation>Ricarica</translation>
+    </message>
+    <message>
+        <source>No subscriptions</source>
+        <translation>Nessuna iscrizione</translation>
+    </message>
+    <message>
+        <source>Importing channels…</source>
+        <translation>Importazione canali…</translation>
+    </message>
+    <message>
+        <source>Pull down to add a channel by URL, watch a video, or import a subscriptions file.</source>
+        <translation>Tira giù per aggiungere un canale tramite URL, guardare un video o importare un file di iscrizioni.</translation>
+    </message>
+    <message>
+        <source>Select a subscriptions file or backup</source>
+        <translation>Seleziona un file di iscrizioni o un backup</translation>
+    </message>
+</context>
+<context>
+    <name>YtChannelPage</name>
+    <message>
+        <source>%1 min ago</source>
+        <translation>%1 min fa</translation>
+    </message>
+    <message>
+        <source>%1 h ago</source>
+        <translation>%1 h fa</translation>
+    </message>
+    <message>
+        <source>%1 d ago</source>
+        <translation>%1 g fa</translation>
+    </message>
+    <message>
+        <source>Channel</source>
+        <translation>Canale</translation>
+    </message>
+    <message>
+        <source>Unsubscribe</source>
+        <translation>Annulla iscrizione</translation>
+    </message>
+    <message>
+        <source>Open in browser</source>
+        <translation>Apri nel browser</translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation>Ricarica</translation>
+    </message>
+    <message>
+        <source>No recent videos</source>
+        <translation>Nessun video recente</translation>
+    </message>
+</context>
+<context>
+    <name>YtPlayerPage</name>
+    <message>
+        <source>Open in browser</source>
+        <translation>Apri nel browser</translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation>Ricarica</translation>
+    </message>
+</context>
+<context>
+    <name>YtSubscriptions</name>
+    <message>
+        <source>Could not resolve the video&apos;s channel</source>
+        <translation>Impossibile risolvere il canale del video</translation>
+    </message>
+    <message>
+        <source>Not a YouTube channel or video URL</source>
+        <translation>Non è un URL di canale o video YouTube</translation>
+    </message>
+    <message>
+        <source>Could not find the channel id</source>
+        <translation>Impossibile trovare l&apos;ID del canale</translation>
+    </message>
+    <message>
+        <source>Already subscribed</source>
+        <translation>Già iscritto</translation>
+    </message>
+    <message>
+        <source>Cannot open %1</source>
+        <translation>Impossibile aprire %1</translation>
+    </message>
+    <message>
+        <source>No subscriptions found in the file</source>
+        <translation>Nessuna iscrizione trovata nel file</translation>
+    </message>
+    <message>
+        <source>Nothing new to import</source>
+        <translation>Niente di nuovo da importare</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n channel(s)</source>
+        <translation>
+            <numerusform>%n canale</numerusform>
+            <numerusform>%n canali</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Cannot write %1</source>
+        <translation>Impossibile scrivere %1</translation>
+    </message>
+    <message>
+        <source>Cannot read the backup archive</source>
+        <translation>Impossibile leggere l&apos;archivio di backup</translation>
+    </message>
+    <message>
+        <source>Cannot stage the backup database</source>
+        <translation>Impossibile preparare il database di backup</translation>
+    </message>
+    <message>
+        <source>Cannot open the backup database</source>
+        <translation>Impossibile aprire il database di backup</translation>
+    </message>
+    <message>
+        <source>This backup has no subscriptions database — export a subscriptions file instead</source>
+        <translation>Questo backup non contiene un database di iscrizioni — esporta invece un file di iscrizioni</translation>
     </message>
 </context>
 </TS>

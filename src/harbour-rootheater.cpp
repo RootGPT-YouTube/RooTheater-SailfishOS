@@ -43,6 +43,8 @@
 #include "media/OpenHandler.h"
 #include "media/ShareHandler.h"
 #include "media/CoverState.h"
+#include "media/YtSubscriptions.h"
+#include "media/YtFeed.h"
 #ifdef HAVE_LIBVLC
 #include "media/VlcBackend.h"
 #endif
@@ -77,6 +79,9 @@ int main(int argc, char *argv[])
     qmlRegisterType<TagReader>("RooTheater.Media", 1, 0, "TagReader");
     // Batch track-number reader backing the audio "Sort by Track" order.
     qmlRegisterType<TrackIndexer>("RooTheater.Media", 1, 0, "TrackIndexer");
+    // YouTube RSS: subscriptions model is a shared instance (ytSubs context
+    // property, below); the per-page video feed is instantiated in QML.
+    qmlRegisterType<YtFeed>("RooTheater.Media", 1, 0, "YtFeed");
 #ifdef HAVE_LIBVLC
     // Layer 3 libvlc backend (built only when libvlc is vendored; see the .pro).
     qmlRegisterType<VlcBackend>("RooTheater.Media", 1, 0, "VlcBackend");
@@ -130,6 +135,10 @@ int main(int argc, char *argv[])
     // Shared playback state for the app cover (written by the viewer/player).
     CoverState *coverState = new CoverState(app.data());
     view->rootContext()->setContextProperty("coverState", coverState);
+
+    // Shared YouTube subscriptions model (Home grid + YouTube page stay in sync).
+    YtSubscriptions *ytSubs = new YtSubscriptions(app.data());
+    view->rootContext()->setContextProperty("ytSubs", ytSubs);
 
     // In-memory provider for embedded audio cover art (engine owns it). MediaEngine
     // reaches it via g_coverProvider; QML shows "image://rtcover/<token>".

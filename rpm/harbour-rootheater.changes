@@ -1,3 +1,13 @@
+* Wed Jul 01 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 0.9.0-1
+- 0.9-beta.
+- YouTube RSS: follow channels via their public RSS feeds (no API key, no quota);
+  add by channel/video URL; import/export subscription lists and full-backup
+  archives; Home grid of channels with avatars and unseen-video badges, with a
+  long-press menu and multi-select (mark seen / delete). Playback opens in the
+  system browser (in-app embedding not supported by the device browser engine).
+- Removed the IPTV feature (broadcasters block out-of-app streaming).
+- libVLC audio now follows the device media volume.
+
 * Sun Jun 14 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 0.1.0-1
 - Initial scaffold: Silica UI, open local file / open network URL,
   QtMultimedia baseline player (HW-accelerated via gst-droid).

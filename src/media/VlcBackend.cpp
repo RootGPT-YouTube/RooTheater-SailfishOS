@@ -73,6 +73,15 @@ VlcBackend::VlcBackend(QObject *parent)
         // libvlc try it and fail with "failed to create audio output"); we always
         // decode to PCM and render through PulseAudio.
         "--no-spdif",
+        // Tag the PulseAudio stream with the MeeGo legacy media role so Sailfish's
+        // media volume (volume keys / mixer) controls it. That policy manages ONLY
+        // streams with media.role=x-maemo (module-stream-restore keys off it); the
+        // libVLC default role "video" is left at a fixed 100%. Must be set at the
+        // libvlc INSTANCE level — the pulse aout reads "role" by inheritance up to
+        // the instance (a per-media :role= option sits on the input, off that
+        // chain; a PULSE_PROP env override is context-level and loses to the
+        // stream-level role libVLC sets). QtMultimedia sets x-maemo itself.
+        "--role=x-maemo",
     };
     m_vlc = libvlc_new(sizeof(args) / sizeof(args[0]), args);
     if (m_vlc) {

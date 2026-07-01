@@ -1,6 +1,6 @@
 Name: harbour-rootheater
 Summary: RooTheater is a multimedia player for Sailfish OS
-Version: 0.7.0
+Version: 0.9.0
 Release: 1
 # The contents of the Group field should be one of the groups listed here:
 # https://github.com/mer-tools/spectacle/blob/master/data/GROUPS
@@ -32,6 +32,8 @@ PkgBR:
 Requires:
   - sailfishsilica-qt5 >= 0.10.9
   - nemo-qml-plugin-configuration-qt5
+  - sailfish-components-webview-qt5
+  - qt5-plugin-sqldriver-sqlite
 
 # All installed files
 Files:
