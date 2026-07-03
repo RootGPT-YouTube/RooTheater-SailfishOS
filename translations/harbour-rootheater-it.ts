@@ -728,6 +728,10 @@
         <source>Reload</source>
         <translation>Ricarica</translation>
     </message>
+    <message>
+        <source>Loading…</source>
+        <translation>Caricamento…</translation>
+    </message>
 </context>
 <context>
     <name>YtSubscriptions</name>

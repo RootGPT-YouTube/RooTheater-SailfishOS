@@ -132,9 +132,12 @@ private:
     // from its canonical link + og: meta. `addAfter` ⇒ subscribe on success.
     void fetchChannelMeta(const QString &channelPageUrl, bool addAfter);
     void appendSub(const Sub &s);
-    // Sort m_subs alphabetically by name (locale-aware). Does NOT emit model
-    // signals — callers wrap it in a reset (or run it before the view exists).
-    void sortByName();
+    // Sort m_subs: channels with an unseen badge (>0) first, each group ordered
+    // alphabetically by name (locale-aware). Does NOT emit model signals —
+    // callers wrap it in a reset (or run it before the view exists).
+    void resort();
+    // resort() wrapped in begin/endResetModel — use after unseen counts change.
+    void resortWithReset();
 
     // Import from the subscriptions .json (already read into bytes).
     void importJson(const QByteArray &bytes);

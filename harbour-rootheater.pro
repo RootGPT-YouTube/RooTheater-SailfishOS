@@ -15,10 +15,10 @@ TARGET = harbour-rootheater
 # and on the app template truncates it to major.minor when expanded.
 # Displayed in-app (AboutPage) via APP_VERSION. RPM Version stays numeric (0.9.0
 # in the spec/yaml) since RPM forbids '-'; the "-beta" label lives in APP_VERSION.
-RT_APP_VERSION = 0.9-beta
+RT_APP_VERSION = 0.9.3-beta
 # VERSION must be a clean numeric for qmake (it's reserved / gets parsed); keep it
 # separate from RT_APP_VERSION so the "-beta" suffix doesn't reach it.
-VERSION = 0.9.0
+VERSION = 0.9.3
 
 CONFIG += sailfishapp sailfishapp_i18n c++17
 
@@ -156,6 +156,14 @@ exists($$FFMPEG_LIBDIR/libavformat.a) {
             $$FFMPEG_LIBDIR/libavutil.a \
             -Wl,--end-group \
             -lssl -lcrypto -lz -lpthread -lm -ldl
+    # sailfishapp links the app -rdynamic (the booster dlopens the executable),
+    # which would re-export every static-ffmpeg symbol (av_*, avcodec_*, …) from
+    # the binary. Gecko's in-process WebView then binds the SYSTEM
+    # libavcodec.so.59's internal calls to our ffmpeg 7.0.2 copies → ABI mix →
+    # SIGSEGV in MediaPDecoder as soon as a web page decodes audio/video.
+    # --exclude-libs hides symbols coming from static archives from .dynsym
+    # while keeping the regular -rdynamic exports (main etc.) intact.
+    QMAKE_LFLAGS += -Wl,--exclude-libs,ALL
 } else {
     error(ffmpeg .a mancanti per $${TARGET_ARCHITECTURE}: esegui scripts/build-ffmpeg.sh $${TARGET_ARCHITECTURE})
 }

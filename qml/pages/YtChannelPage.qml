@@ -12,7 +12,11 @@ Page {
     property string channelName: ""
 
     YtFeed { id: feed }
-    Component.onCompleted: feed.loadChannels([ channelId ])
+    Component.onCompleted: {
+        feed.loadChannels([ channelId ])
+        // Opening a channel counts as seeing it: clear its unseen badge on Home.
+        ytSubs.markSeen(channelId)
+    }
 
     function timeAgo(ms) {
         if (!ms || ms <= 0)
@@ -68,7 +72,8 @@ Page {
             width: parent.width
             contentHeight: thumb.height + 2 * Theme.paddingMedium
 
-            onClicked: Qt.openUrlExternally("https://m.youtube.com/watch?v=" + model.videoId)
+            onClicked: pageStack.push(Qt.resolvedUrl("YtPlayerPage.qml"),
+                                      { videoId: model.videoId, title: model.title })
 
             Image {
                 id: thumb

@@ -240,11 +240,24 @@ QString YtSubscriptions::videoIdFromUrl(const QString &url)
     return QString();
 }
 
-void YtSubscriptions::sortByName()
+void YtSubscriptions::resort()
 {
     std::sort(m_subs.begin(), m_subs.end(), [](const Sub &a, const Sub &b) {
+        // Channels with unseen videos float to the top; ties (and the seen
+        // group) stay alphabetical.
+        const bool au = a.unseen > 0;
+        const bool bu = b.unseen > 0;
+        if (au != bu)
+            return au;
         return QString::localeAwareCompare(a.name, b.name) < 0;
     });
+}
+
+void YtSubscriptions::resortWithReset()
+{
+    beginResetModel();
+    resort();
+    endResetModel();
 }
 
 void YtSubscriptions::appendSub(const Sub &s)
@@ -252,9 +265,7 @@ void YtSubscriptions::appendSub(const Sub &s)
     // Keep the list alphabetical: append then re-sort (a reset is simpler and
     // cheap for this list size than finding the sorted insert position).
     m_subs.append(s);
-    beginResetModel();
-    sortByName();
-    endResetModel();
+    resortWithReset();
     emit countChanged();
 }
 
@@ -297,23 +308,24 @@ void YtSubscriptions::markSeen(const QString &channelId)
         return;
     m_subs[i].lastSeen = QDateTime::currentMSecsSinceEpoch();
     m_subs[i].unseen = 0;
-    const QModelIndex mi = index(i, 0);
-    emit dataChanged(mi, mi, { UnseenRole });
+    resortWithReset();   // badge cleared → drop out of the unseen-first group
     save();
 }
 
 void YtSubscriptions::markSeenList(const QStringList &channelIds)
 {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    bool any = false;
     for (const QString &id : channelIds) {
         const int i = indexOfChannel(id);
         if (i < 0)
             continue;
         m_subs[i].lastSeen = now;
         m_subs[i].unseen = 0;
-        const QModelIndex mi = index(i, 0);
-        emit dataChanged(mi, mi, { UnseenRole });
+        any = true;
     }
+    if (any)
+        resortWithReset();
     save();
 }
 
@@ -325,7 +337,7 @@ void YtSubscriptions::markAllSeen()
         m_subs[i].unseen = 0;
     }
     if (!m_subs.isEmpty())
-        emit dataChanged(index(0, 0), index(m_subs.size() - 1, 0), { UnseenRole });
+        resortWithReset();
     save();
 }
 
@@ -369,6 +381,10 @@ void YtSubscriptions::startUnseenFetch()
                 }
             }
             startUnseenFetch();
+            // When the whole batch has drained, reorder so channels that gained
+            // an unseen badge float to the top (badge>0 first, then alphabetical).
+            if (m_unseenActive == 0 && m_unseenQueue.isEmpty())
+                resortWithReset();
         });
     }
 }
@@ -614,9 +630,7 @@ void YtSubscriptions::finishImport(int addedCount)
         emit error(tr("Nothing new to import"));
         return;
     }
-    beginResetModel();
-    sortByName();
-    endResetModel();
+    resortWithReset();
     emit countChanged();
     save();
     emit added(tr("%n channel(s)", "", addedCount));
@@ -748,7 +762,7 @@ void YtSubscriptions::load()
             s.url = QStringLiteral("https://www.youtube.com/channel/") + s.channelId;
         m_subs.append(s);
     }
-    sortByName();   // constructor: no view attached yet, plain sort is enough
+    resort();   // load: no view attached yet, plain sort is enough
 }
 
 void YtSubscriptions::save() const

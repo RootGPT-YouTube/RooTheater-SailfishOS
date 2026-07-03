@@ -58,7 +58,7 @@ Page {
         dlg.accepted.connect(function() {
             var id = ytSubs.videoIdFromUrl(dlg.url)
             if (id.length === 0) { page.notify(qsTr("Not a valid video URL")); return }
-            Qt.openUrlExternally("https://m.youtube.com/watch?v=" + id)
+            pageStack.push(Qt.resolvedUrl("YtPlayerPage.qml"), { videoId: id })
         })
     }
 
@@ -126,7 +126,8 @@ Page {
             width: parent.width
             contentHeight: thumb.height + 2 * Theme.paddingMedium
 
-            onClicked: Qt.openUrlExternally("https://m.youtube.com/watch?v=" + model.videoId)
+            onClicked: pageStack.push(Qt.resolvedUrl("YtPlayerPage.qml"),
+                                      { videoId: model.videoId, title: model.title })
 
             Image {
                 id: thumb

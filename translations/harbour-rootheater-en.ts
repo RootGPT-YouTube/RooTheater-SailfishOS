@@ -728,6 +728,10 @@
         <source>Reload</source>
         <translation>Reload</translation>
     </message>
+    <message>
+        <source>Loading…</source>
+        <translation>Loading…</translation>
+    </message>
 </context>
 <context>
     <name>YtSubscriptions</name>

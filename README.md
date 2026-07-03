@@ -179,6 +179,51 @@ componenti LGPL/GPL (vedi [NOTICE.md](NOTICE.md)).
   SFOS i486 non ha nasm/yasm).
 - Per un rilascio completo a 3 architetture, ripeti i passi 2–4 per ogni `<arch>`.
 
+## YouTube & trademarks
+
+RooTheater's YouTube feature is a thin convenience layer over public,
+unauthenticated interfaces:
+
+- **Subscriptions** are read from each channel's public **RSS feed** — no Google
+  API key, no OAuth, no login.
+- **Playback** opens YouTube's own **official web player** (`m.youtube.com`) inside
+  the Sailfish WebView (the same Gecko engine as the system browser), unmodified
+  and **with advertising intact**. RooTheater does **not** download, extract,
+  re-host, transcode or otherwise redistribute any YouTube content or streams.
+
+Using the Sailfish WebView / WebEngine QML modules is ordinary use of the
+operating system's public APIs; those components are provided by SailfishOS at
+runtime and are **not** bundled or redistributed by RooTheater (the bundled
+third-party libraries — FFmpeg, libVLC and its contrib — are listed separately
+in [NOTICE.md](NOTICE.md)).
+
+*"YouTube" is a trademark of Google LLC. RooTheater is an independent project,
+**not affiliated with, sponsored by or endorsed by** Google LLC or YouTube; the
+name is used solely for identification.*
+
+## YouTube e marchi (Italiano)
+
+La funzione YouTube di RooTheater è un sottile livello di comodità sopra
+interfacce pubbliche e non autenticate:
+
+- Le **iscrizioni** vengono lette dal **feed RSS pubblico** di ciascun canale —
+  nessuna API key di Google, nessun OAuth, nessun login.
+- La **riproduzione** apre il **player web ufficiale** di YouTube
+  (`m.youtube.com`) dentro la Sailfish WebView (lo stesso motore Gecko del browser
+  di sistema), non modificato e **con la pubblicità intatta**. RooTheater **non**
+  scarica, estrae, ri-ospita, transcodifica né ridistribuisce in alcun modo i
+  contenuti o gli stream di YouTube.
+
+L'uso dei moduli QML Sailfish WebView / WebEngine è normale utilizzo delle API
+pubbliche del sistema operativo; tali componenti sono forniti da SailfishOS a
+runtime e **non** vengono impacchettati o ridistribuiti da RooTheater (le librerie
+di terze parti effettivamente incluse — FFmpeg, libVLC e i suoi contrib — sono
+elencate a parte in [NOTICE.md](NOTICE.md)).
+
+*"YouTube" è un marchio di Google LLC. RooTheater è un progetto indipendente,
+**non affiliato, sponsorizzato o approvato** da Google LLC o YouTube; il nome è
+usato solo a scopo identificativo.*
+
 ## License
 
 GPL-3.0 © 2026 RootGPT. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
