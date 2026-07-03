@@ -1,15 +1,7 @@
 # RooTheater
 
-A multimedia player for SailfishOS — hardware-accelerated playback of local
-files and network streams.
-
-- **App name:** RooTheater
-- **Author:** RootGPT
-- **Version:** 0.5.0
-- **Platform:** SailfishOS 5.1.0.11
-- **License:** GPLv3 (see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md))
-
-## English
+A multimedia player for **Sailfish OS 5.1**, focused on hardware-accelerated
+playback of **local files and network streams**. Part of the `RooT*` app family.
 
 Prerequisite: SFOS 5.1.0.11  
 Telegram Group: https://t.me/+E7V-a7x4JbY1Njhk  
@@ -20,21 +12,6 @@ RooTheater is tested on:
 ## This application was developed using artificial intelligence technologies, specifically Warp Terminal and Claude Code Opus, but Warp Terminal has been gradually phased out in favor of Claude Code. Therefore, if the use of an application generated via a large-scale language model (LLM) is not comfortable for the user, it is recommended to avoid its installation and use. It is specified that any negative comment regarding this circumstance will not only be ignored but will result in the immediate blocking of the user.
 ## I hereby disclaim any and all responsibility for the application, its functionality, and any consequences arising from its use. By choosing to use this application, the user acknowledges and accepts that they do so entirely at their own risk, and agrees that the developer shall not be held liable for any damages, losses, or adverse effects—whether direct, indirect, incidental, or consequential—resulting from the use or misuse of the application.
 
-RooTheater is a multimedia player for SailfishOS that plays both local media
-files and network streams. It is built around a **layered media engine**: on
-Sailfish the only real hardware video decode path is the Android HAL exposed
-via `libhybris` → `droidmedia` / `gst-droid`, so RooTheater combines a custom
-hardware path for the popular codecs (H.264/HEVC/VP9, zero-copy into the Qt
-scene graph) with QtMultimedia/GStreamer and libVLC as fallbacks for broad
-format and streaming coverage. FFmpeg provides container demuxing, codec
-probing and software decoding.
-
-This release (v0.1) is the baseline: a Silica UI to open a local file or a
-network URL, played through QtMultimedia (hardware-accelerated via gst-droid)
-with basic playback controls.
-
-## Italiano
-
 Requisiti: SFOS 5.1.0.11  
 Gruppo Telegram: https://t.me/+E7V-a7x4JbY1Njhk  
 RooTheater è testato:  
@@ -44,28 +21,86 @@ RooTheater è testato:
 ## Questa applicazione è stata sviluppata utilizzando tecnologie di intelligenza artificiale, in particolare Warp Terminal e Claude Code Opus, ma Warp Terminal è stato abbandonato in favore di Claude Code. Pertanto, se l'uso di un'applicazione generata tramite un modello linguistico su larga scala (LLM) non fosse per l'utente confortevole, si raccomanda di evitarne l'installazione e l'uso. Si specifica che qualsiasi commento negativo riguardante questa circostanza non verrà solo ignorato, ma comporterà il blocco immediato dell'utente.
 ## Con la presente declino ogni responsabilità relativa all’applicazione, al suo funzionamento e a qualsiasi conseguenza derivante dal suo utilizzo. L’utente, scegliendo di utilizzare l’applicazione, riconosce e accetta di farlo a proprio ed esclusivo rischio, e concorda che lo sviluppatore non potrà essere ritenuto responsabile per eventuali danni, perdite o effetti negativi — diretti, indiretti, incidentali o consequenziali — derivanti dall’uso o dall’uso improprio dell’applicazione.
 
-RooTheater è un lettore multimediale per SailfishOS che riproduce sia file
-locali sia stream di rete. È costruito attorno a un **motore a livelli**: su
-Sailfish l'unica vera via di decodifica video hardware è l'Android HAL esposto
-tramite `libhybris` → `droidmedia` / `gst-droid`, perciò RooTheater unisce un
-percorso hardware dedicato ai codec più diffusi (H.264/HEVC/VP9, zero-copy
-nella scene graph di Qt) con QtMultimedia/GStreamer e libVLC come fallback per
-un'ampia compatibilità di formati e streaming. FFmpeg si occupa di demux dei
-container, analisi dei codec e decodifica software.
+## Media engine — layered design
 
-Questa versione (v0.1) è la base: un'interfaccia Silica per aprire un file
-locale o un URL di rete, riprodotti tramite QtMultimedia (accelerazione
-hardware via gst-droid) con i controlli di riproduzione essenziali.
+On Sailfish OS the only real hardware video decode path is the Android HAL
+exposed via `libhybris` → `droidmedia` → `gst-droid`. `libvlc` has no gst-droid
+backend, so a "pure libvlc" app would fall back to software decode. RooTheater
+therefore uses a **layered engine** behind a C++ facade, picking the best
+backend per codec/source:
+
+| Layer | Backend | Role | Status |
+|------|---------|------|--------|
+| 1 | **droidmedia** (direct) | Zero-copy HW decode: gralloc buffers → `EGLImage` → `QSGTexture` | planned (v0.3) |
+| 2 | **QtMultimedia / GStreamer** | HW-accel for common formats via gst-droid | **baseline (v0.1)** |
+| 3 | **libvlc** | Exotic protocols/codecs/subtitles; compiled per-arch | **done (v0.2)** |
+
+The C++ facade (`MediaEngine`) lands in **v0.2**: it probes the source with
+ffmpeg and routes it capability-driven to the backend that should play it
+(`Droidmedia` / `QtMultimedia` / `Libvlc` / `Software`).
+
+**Layer 1 is capability-driven, not hardcoded.** At startup it asks droidmedia
+which OMX decoders the device actually exposes; the FFmpeg probe gives the
+file's codec; if that codec is in the available HW set it takes the HW path,
+otherwise it falls through to software. **H.264/AVC, H.265/HEVC and VP9 are the
+guaranteed, optimised codecs.** Others (MPEG-2, MPEG-4 Part 2 ASP = DivX/Xvid,
+VP8) get HW *opportunistically* when the device advertises them, else SW — no
+per-codec hardcoding. (AVI is a container, demuxed by FFmpeg regardless; MPEG-2
+/ MPEG-4 ASP content is SD/low-bitrate where SW decode is cheap and OMX support
+is device-inconsistent, so they are not explicit HW targets.)
+
+**ffmpeg** (`libavformat`/`libavcodec`/`libavutil`/`libswscale`/`libswresample`) is
+the foundation of the engine facade, not a separate layer:
+
+1. **Demux + parse** containers (MP4/MKV/TS/HLS…) to extract the elementary
+   H.264/HEVC/VP9 bitstream that feeds the droidmedia HW decoder — the piece
+   droidmedia itself lacks (it decodes but does not demux).
+2. **Probe** codecs/tracks so the facade can pick the right backend.
+3. **Software decode fallback** for codecs without HW support.
+
+Note: libvlc already bundles ffmpeg internally and GStreamer has its own
+demuxers, so ffmpeg-as-library mainly serves *our* Layer 1. It landed with the
+facade in **v0.2**: we cross-build our own ffmpeg 7.0.2 as PIC static `.a` per
+arch (`scripts/build-ffmpeg.sh`, LGPL — no x264/gpl) and **static-link** it, so
+there is nothing to bundle, no RPATH and no spec excludes for ffmpeg.
+
+## Status
+
+**v0.1 (baseline)** — runnable Silica skeleton:
+- Open a local file (Sailfish Pickers) or a network URL.
+- Playback via `QtMultimedia` `MediaPlayer` + `VideoOutput` (HW-accelerated
+  through gst-droid for common codecs).
+- Player controls: play/pause, ±10s, seek slider, position/duration, tap to
+  toggle overlay.
+
+**v0.2 (facade + libvlc)** — the C++ media engine:
+- `MediaEngine` facade: ffmpeg (`libavformat`/`libavcodec`) demux/probe off the
+  GUI thread → capability-driven backend selection; the detected media and the
+  chosen backend are surfaced in the player overlay.
+- **Layer 3 libvlc 3.0.21** cross-built for SFOS (`scripts/build-libvlc.sh`),
+  rendered into Qt Quick via the vmem CPU-buffer callbacks (`VlcBackend` +
+  `VlcVideoOutput`); audio through libvlc's pulse output. libvlc/libvlccore +
+  plugins are bundled per arch; ffmpeg is static-linked.
+- `PlayerPage` routes to libvlc when the probe picks it, else the QtMultimedia
+  baseline, behind one set of controls.
+- Currently built/vendored for **aarch64**; armv7hl/i486 build at release.
+
+## Roadmap
+
+- **v0.3** — direct droidmedia HW decoder with zero-copy GL rendering for the
+  popular codecs; fallback chain droidmedia → GStreamer → libvlc.
+- Library/browse view, playback resume, subtitles, audio-track selection.
 
 ## Building from source (English)
 
-RooTheater builds with the **Sailfish SDK** (`sfdk`). This public repository
-ships the application sources and the *vendoring scripts*, but **not** the
-prebuilt native dependencies (FFmpeg static libraries, libVLC `.so` + plugins).
-You can either **download the prebuilt vendor archive** from the Releases page
-(fast) or **regenerate them per architecture** with the scripts below. This keeps
-the repo light while still providing the *corresponding source* required by the
-LGPL/GPL components (see [NOTICE.md](NOTICE.md)).
+RooTheater builds with the **Sailfish SDK** (`sfdk`). The app links/bundles
+native dependencies that are *vendored per architecture*: FFmpeg (static `.a`)
+and libVLC (`.so` + plugins). In this repo they may already be present under
+`ffmpeg/<arch>/` and `vlc/<arch>/`; if not (e.g. a fresh clone of the public
+mirror, or a new architecture), either **download the prebuilt vendor archive**
+from the Releases page (fast) or **regenerate them from source** with the scripts
+below — the scripts are the *corresponding source* of the LGPL/GPL components
+(see [NOTICE.md](NOTICE.md)).
 
 **Prerequisites**
 - The [Sailfish SDK](https://docs.sailfishos.org/Tools/Sailfish_SDK/) installed,
@@ -75,13 +110,12 @@ LGPL/GPL components (see [NOTICE.md](NOTICE.md)).
 
 **Steps** (replace `<arch>` with `aarch64`, `armv7hl` or `i486`):
 
-1. **Clone the repository**
+1. **Clone**
    ```sh
    git clone https://github.com/RootGPT-YouTube/RooTheater-SailfishOS.git
    cd RooTheater-SailfishOS
    ```
-2. **Install the build dependency** into the SDK target (once per arch). The
-   direct HW path links `droidmedia`:
+2. **Install the build dependency** into the SDK target (once per arch):
    ```sh
    sfdk engine exec sb2 -t SailfishOS-5.0.0.62-<arch>.default \
         -m sdk-install -R zypper -n in droidmedia-devel
@@ -108,41 +142,39 @@ LGPL/GPL components (see [NOTICE.md](NOTICE.md)).
    sudo pkcon install-local --allow-untrusted harbour-rootheater-<version>-1.<arch>.rpm
    ```
 
-**Notes**
-- The `.pro` gates the libVLC layer on `vlc/<arch>/lib/libvlc.so` existing and
-  the droidmedia layer on `packagesExist(droidmedia)`: if a vendored piece is
-  missing the app still builds, just **without that layer**. Check qmake's
-  `message(...)` output ("libvlc backend enabled…", "droidmedia HW path enabled")
-  to confirm every layer is active.
-- On **i486** the scripts disable x86 assembly automatically (the SFOS i486
-  target ships no nasm/yasm).
-- For a full 3-architecture release, repeat steps 2–4 for each `<arch>`.
+The `.pro` gates the libVLC layer on `vlc/<arch>/lib/libvlc.so` and droidmedia on
+`packagesExist(droidmedia)`, so an arch without a vendored piece still builds
+(without that layer) — check qmake's `message(...)` lines to confirm all layers
+are active. On **i486** the scripts disable x86 asm (no nasm/yasm in the target).
+For a full release, repeat steps 2–4 for each arch. Conventions shared with the
+`RooT*` family: package `harbour-rootheater`, 3-arch RPMs, version single-sourced
+from `RT_APP_VERSION` in the `.pro`.
 
 ## Compilare dai sorgenti (Italiano)
 
-RooTheater si compila con il **Sailfish SDK** (`sfdk`). Questo repository
-pubblico contiene i sorgenti dell'app e gli *script di vendoring*, ma **non** le
-dipendenze native precompilate (librerie statiche di FFmpeg, `.so` + plugin di
-libVLC). Puoi **scaricare l'archivio vendor precompilato** dalla pagina Releases
-(veloce) oppure **rigenerarle per architettura** con gli script qui sotto. Così
-il repo resta leggero pur fornendo la *corresponding source* richiesta dai
+RooTheater si compila con il **Sailfish SDK** (`sfdk`). L'app linka/bundla
+dipendenze native *vendorizzate per architettura*: FFmpeg (`.a` statiche) e
+libVLC (`.so` + plugin). In questo repo possono già essere presenti in
+`ffmpeg/<arch>/` e `vlc/<arch>/`; se mancano (es. clone pulito del mirror
+pubblico, o una nuova architettura), puoi **scaricare l'archivio vendor
+precompilato** dalla pagina Releases (veloce) oppure **rigenerarle da sorgente**
+con gli script qui sotto — gli script sono la *corresponding source* dei
 componenti LGPL/GPL (vedi [NOTICE.md](NOTICE.md)).
 
 **Prerequisiti**
 - Il [Sailfish SDK](https://docs.sailfishos.org/Tools/Sailfish_SDK/) installato,
   con `sfdk` nel `PATH`.
-- Il target di build **SailfishOS-5.0.0.62** per la tua architettura — una tra
+- Il target **SailfishOS-5.0.0.62** per la tua architettura — una tra
   `aarch64`, `armv7hl`, `i486`.
 
 **Passi** (sostituisci `<arch>` con `aarch64`, `armv7hl` o `i486`):
 
-1. **Clona il repository**
+1. **Clona**
    ```sh
    git clone https://github.com/RootGPT-YouTube/RooTheater-SailfishOS.git
    cd RooTheater-SailfishOS
    ```
-2. **Installa la dipendenza di build** nel target dell'SDK (una volta per arch).
-   Il percorso HW diretto si linka a `droidmedia`:
+2. **Installa la dipendenza di build** nel target dell'SDK (una volta per arch):
    ```sh
    sfdk engine exec sb2 -t SailfishOS-5.0.0.62-<arch>.default \
         -m sdk-install -R zypper -n in droidmedia-devel
@@ -169,15 +201,12 @@ componenti LGPL/GPL (vedi [NOTICE.md](NOTICE.md)).
    sudo pkcon install-local --allow-untrusted harbour-rootheater-<versione>-1.<arch>.rpm
    ```
 
-**Note**
-- Il `.pro` abilita il layer libVLC solo se esiste `vlc/<arch>/lib/libvlc.so` e
-  il layer droidmedia solo se `packagesExist(droidmedia)`: se manca un pezzo
-  vendorizzato l'app si compila comunque, ma **senza quel layer**. Controlla i
-  `message(...)` di qmake ("libvlc backend enabled…", "droidmedia HW path
-  enabled") per confermare che ogni layer sia attivo.
-- Su **i486** gli script disabilitano automaticamente l'assembly x86 (il target
-  SFOS i486 non ha nasm/yasm).
-- Per un rilascio completo a 3 architetture, ripeti i passi 2–4 per ogni `<arch>`.
+Il `.pro` abilita il layer libVLC solo se esiste `vlc/<arch>/lib/libvlc.so` e
+droidmedia solo se `packagesExist(droidmedia)`, quindi un'arch senza un pezzo
+vendorizzato si compila comunque (senza quel layer) — controlla i `message(...)`
+di qmake per confermare che ogni layer sia attivo. Su **i486** gli script
+disabilitano l'assembly x86 (nel target non c'è nasm/yasm). Per un rilascio
+completo, ripeti i passi 2–4 per ogni arch.
 
 ## YouTube & trademarks
 
@@ -226,4 +255,4 @@ usato solo a scopo identificativo.*
 
 ## License
 
-GPL-3.0 © 2026 RootGPT. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
+GPL-3.0 © 2026 RootGPT.
