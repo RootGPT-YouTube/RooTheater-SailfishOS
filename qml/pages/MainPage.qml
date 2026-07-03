@@ -169,14 +169,23 @@ Page {
                 visible: ytSubs.count > 0
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * Theme.horizontalPageMargin
+                // `cell` is the *target* tile width; the column count rounds to
+                // the nearest fit (not floor) so a screen that would leave a wide
+                // dead band on the right — e.g. the C2, ~4.5 cells wide — gets an
+                // extra column (5) instead of an ugly gap, while a screen that
+                // divides cleanly (X10III ≈ 4) stays put. Bigger screens naturally
+                // get 5+ columns. `cellW` is the actual per-column width; tiles
+                // (avatar + height) scale to it, so rows always fill edge-to-edge
+                // and cellW stays within ~±10% of `cell`.
                 readonly property real cell: Theme.itemSizeExtraLarge
-                columns: Math.max(1, Math.floor(width / cell))
+                columns: Math.max(1, Math.round(width / cell))
+                readonly property real cellW: width / columns
                 Repeater {
                     model: ytSubs
                     delegate: BackgroundItem {
                         id: chanItem
-                        width: ytGrid.cell
-                        height: ytGrid.cell + Theme.fontSizeExtraSmall * 2.6
+                        width: ytGrid.cellW
+                        height: ytGrid.cellW + Theme.fontSizeExtraSmall * 2.6
                         highlighted: down || page.ytIsSelected(model.channelId)
                         onClicked: {
                             if (page.ytSelectMode)
@@ -200,7 +209,7 @@ Page {
                             // Circular avatar (channel og:image); initial placeholder.
                             Item {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                width: ytGrid.cell - 2 * Theme.paddingMedium
+                                width: ytGrid.cellW - 2 * Theme.paddingMedium
                                 height: width
                                 Rectangle {
                                     anchors.fill: parent

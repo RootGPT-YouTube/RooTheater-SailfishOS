@@ -615,34 +615,6 @@
         <translation>%1 d ago</translation>
     </message>
     <message>
-        <source>Add channel</source>
-        <translation>Add channel</translation>
-    </message>
-    <message>
-        <source>Channel URL (youtube.com/@handle, /channel/UC…)</source>
-        <translation>Channel URL (youtube.com/@handle, /channel/UC…)</translation>
-    </message>
-    <message>
-        <source>Channel URL</source>
-        <translation>Channel URL</translation>
-    </message>
-    <message>
-        <source>Watch a video</source>
-        <translation>Watch a video</translation>
-    </message>
-    <message>
-        <source>Video URL (youtube.com/watch?v=…, youtu.be/…)</source>
-        <translation>Video URL (youtube.com/watch?v=…, youtu.be/…)</translation>
-    </message>
-    <message>
-        <source>Video URL</source>
-        <translation>Video URL</translation>
-    </message>
-    <message>
-        <source>Not a valid video URL</source>
-        <translation>Not a valid video URL</translation>
-    </message>
-    <message>
         <source>YouTube</source>
         <translation>YouTube</translation>
     </message>
@@ -675,12 +647,16 @@
         <translation>Importing channels…</translation>
     </message>
     <message>
-        <source>Pull down to add a channel by URL, watch a video, or import a subscriptions file.</source>
-        <translation>Pull down to add a channel by URL, watch a video, or import a subscriptions file.</translation>
-    </message>
-    <message>
         <source>Select a subscriptions file or backup</source>
         <translation>Select a subscriptions file or backup</translation>
+    </message>
+    <message>
+        <source>Search videos and channels</source>
+        <translation>Search videos and channels</translation>
+    </message>
+    <message>
+        <source>Pull down to search videos and channels, or import a subscriptions file.</source>
+        <translation>Pull down to search videos and channels, or import a subscriptions file.</translation>
     </message>
 </context>
 <context>
@@ -731,6 +707,48 @@
     <message>
         <source>Loading…</source>
         <translation>Loading…</translation>
+    </message>
+</context>
+<context>
+    <name>YtSearch</name>
+    <message>
+        <source>No results</source>
+        <translation>No results</translation>
+    </message>
+</context>
+<context>
+    <name>YtSearchPage</name>
+    <message>
+        <source>Added: %1</source>
+        <translation>Added: %1</translation>
+    </message>
+    <message>
+        <source>Search YouTube</source>
+        <translation>Search YouTube</translation>
+    </message>
+    <message>
+        <source>Videos and channels</source>
+        <translation>Videos and channels</translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <translation>Show</translation>
+    </message>
+    <message>
+        <source>Everything</source>
+        <translation>Everything</translation>
+    </message>
+    <message>
+        <source>Videos</source>
+        <translation>Videos</translation>
+    </message>
+    <message>
+        <source>Channels</source>
+        <translation>Channels</translation>
+    </message>
+    <message>
+        <source>Videos can be watched right away; channels can be added to your subscriptions.</source>
+        <translation>Videos can be watched right away; channels can be added to your subscriptions.</translation>
     </message>
 </context>
 <context>

@@ -31,13 +31,15 @@ backend per codec/source:
 
 | Layer | Backend | Role | Status |
 |------|---------|------|--------|
-| 1 | **droidmedia** (direct) | Zero-copy HW decode: gralloc buffers → `EGLImage` → `QSGTexture` | planned (v0.3) |
-| 2 | **QtMultimedia / GStreamer** | HW-accel for common formats via gst-droid | **baseline (v0.1)** |
-| 3 | **libvlc** | Exotic protocols/codecs/subtitles; compiled per-arch | **done (v0.2)** |
+| 1 | **droidmedia** (direct) | Zero-copy HW decode: gralloc buffers → `EGLImage` → `QSGTexture` | **done** (since v0.3) |
+| 2 | **QtMultimedia / GStreamer** | HW-accel for common formats via gst-droid | **done** (since v0.1) |
+| 3 | **libvlc** | Exotic protocols/codecs/subtitles; compiled per-arch | **done** (since v0.2) |
 
-The C++ facade (`MediaEngine`) lands in **v0.2**: it probes the source with
-ffmpeg and routes it capability-driven to the backend that should play it
-(`Droidmedia` / `QtMultimedia` / `Libvlc` / `Software`).
+All three layers are active. The C++ facade (`MediaEngine`) probes the source
+with ffmpeg and routes it capability-driven to the backend that should play it
+(`Droidmedia` / `QtMultimedia` / `Libvlc` / `Software`); the player also offers
+a manual decoding toggle (Auto / Hardware / Software) with automatic HW→SW
+fallback on error.
 
 **Layer 1 is capability-driven, not hardcoded.** At startup it asks droidmedia
 which OMX decoders the device actually exposes; the FFmpeg probe gives the
@@ -59,37 +61,40 @@ the foundation of the engine facade, not a separate layer:
 3. **Software decode fallback** for codecs without HW support.
 
 Note: libvlc already bundles ffmpeg internally and GStreamer has its own
-demuxers, so ffmpeg-as-library mainly serves *our* Layer 1. It landed with the
-facade in **v0.2**: we cross-build our own ffmpeg 7.0.2 as PIC static `.a` per
-arch (`scripts/build-ffmpeg.sh`, LGPL — no x264/gpl) and **static-link** it, so
-there is nothing to bundle, no RPATH and no spec excludes for ffmpeg.
+demuxers, so ffmpeg-as-library mainly serves *our* Layer 1: we cross-build our
+own ffmpeg 7.0.2 as PIC static `.a` per arch (`scripts/build-ffmpeg.sh`, LGPL —
+no x264/gpl) and **static-link** it, so there is nothing to bundle, no RPATH
+and no spec excludes for ffmpeg.
 
-## Status
+## Features (0.9.4-beta)
 
-**v0.1 (baseline)** — runnable Silica skeleton:
-- Open a local file (Sailfish Pickers) or a network URL.
-- Playback via `QtMultimedia` `MediaPlayer` + `VideoOutput` (HW-accelerated
-  through gst-droid for common codecs).
-- Player controls: play/pause, ±10s, seek slider, position/duration, tap to
-  toggle overlay.
-
-**v0.2 (facade + libvlc)** — the C++ media engine:
-- `MediaEngine` facade: ffmpeg (`libavformat`/`libavcodec`) demux/probe off the
-  GUI thread → capability-driven backend selection; the detected media and the
-  chosen backend are surfaced in the player overlay.
-- **Layer 3 libvlc 3.0.21** cross-built for SFOS (`scripts/build-libvlc.sh`),
-  rendered into Qt Quick via the vmem CPU-buffer callbacks (`VlcBackend` +
-  `VlcVideoOutput`); audio through libvlc's pulse output. libvlc/libvlccore +
-  plugins are bundled per arch; ffmpeg is static-linked.
-- `PlayerPage` routes to libvlc when the probe picks it, else the QtMultimedia
-  baseline, behind one set of controls.
-- Currently built/vendored for **aarch64**; armv7hl/i486 build at release.
+- **Media gallery** across the phone's three storage locations (internal
+  memory, Android storage, SD card), organized by type (Images / Videos /
+  Audio) with thumbnail grids, animated GIFs, tag view and multi-select
+  delete/share.
+- **Video player** on the layered engine above: droidmedia zero-copy HW decode
+  for the popular codecs, libVLC/QtMultimedia coverage for the rest; seek,
+  loop, rotation, HW/SW decoding toggle.
+- **Audio player** with metadata (FFmpeg tag probe), cover art, album playback
+  and audio/video **playlists**.
+- **Image tools**: pinch-to-zoom viewer (images and video) and a
+  non-destructive editor — full-resolution crop, freehand/circle/arrow
+  annotations, 90° rotation.
+- **Network streams**: HLS / live streaming over the HW path (MPEG-TS) and
+  libVLC HTTPS.
+- **YouTube RSS** (keyless — no Google API key, no login, no tracking):
+  subscribe to channels via their public RSS feeds, import/export subscription
+  backups, Home grid with unseen-video badges, **in-app search for videos and
+  channels**, and in-app playback of the official mobile watch page in the
+  Sailfish WebView (see the YouTube note below).
+- **System integration**: "Open with" and "Share with" handlers, live cover
+  with playback controls, EN/IT translations.
+- Built and vendored for all three architectures: **aarch64, armv7hl, i486**.
 
 ## Roadmap
 
-- **v0.3** — direct droidmedia HW decoder with zero-copy GL rendering for the
-  popular codecs; fallback chain droidmedia → GStreamer → libvlc.
-- Library/browse view, playback resume, subtitles, audio-track selection.
+- Subtitles and audio-track selection, playback resume, and further
+  gallery/player refinements.
 
 ## Building from source (English)
 

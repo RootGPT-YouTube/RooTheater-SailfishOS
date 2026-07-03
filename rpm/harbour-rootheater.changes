@@ -1,3 +1,20 @@
+* Fri Jul 03 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 0.9.4-1
+- 0.9.4-beta.
+- YouTube: in-app search for videos AND channels, still fully keyless (no API
+  key, no login) — suggestions while typing, Everything/Videos/Channels filter,
+  one-tap subscribe from channel results. The "Add channel" / "Watch a video"
+  URL dialogs are replaced by the search.
+- Home: the channel grid now fills the screen width edge-to-edge with a
+  responsive column count (e.g. 4 on Xperia 10 III, 5 on Jolla C2).
+
+* Thu Jul 02 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 0.9.3-1
+- 0.9.3-beta.
+- YouTube: in-app playback — the official m.youtube.com watch page opens inside
+  the Sailfish WebView (auto-fullscreen, tap-to-play, captions off by default)
+  instead of the system browser.
+- Home: unseen-first ordering of the channel grid; opening a channel marks it
+  as seen.
+
 * Wed Jul 01 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 0.9.0-1
 - 0.9-beta.
 - YouTube RSS: follow channels via their public RSS feeds (no API key, no quota);

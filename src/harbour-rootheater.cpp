@@ -45,6 +45,7 @@
 #include "media/CoverState.h"
 #include "media/YtSubscriptions.h"
 #include "media/YtFeed.h"
+#include "media/YtSearch.h"
 #ifdef HAVE_LIBVLC
 #include "media/VlcBackend.h"
 #endif
@@ -82,6 +83,8 @@ int main(int argc, char *argv[])
     // YouTube RSS: subscriptions model is a shared instance (ytSubs context
     // property, below); the per-page video feed is instantiated in QML.
     qmlRegisterType<YtFeed>("RooTheater.Media", 1, 0, "YtFeed");
+    // Keyless YouTube search (videos + channels), instantiated per page.
+    qmlRegisterType<YtSearch>("RooTheater.Media", 1, 0, "YtSearch");
 #ifdef HAVE_LIBVLC
     // Layer 3 libvlc backend (built only when libvlc is vendored; see the .pro).
     qmlRegisterType<VlcBackend>("RooTheater.Media", 1, 0, "VlcBackend");

@@ -5,8 +5,9 @@ import RooTheater.Media 1.0
 
 // The YouTube "subscriptions" view (100% keyless / zero Data API quota): the
 // recent videos of every followed channel, merged from their public RSS feeds.
-// Add channels by pasting a channel URL, watch any video by pasting its URL, and
-// import/export the subscription list. Playback opens in the system browser.
+// Videos and channels are found via in-app search (YtSearchPage — channels are
+// subscribed right from the results), and the subscription list can be
+// imported/exported. Playback opens in the in-app player (YtPlayerPage).
 Page {
     id: page
     allowedOrientations: Orientation.All
@@ -43,25 +44,6 @@ Page {
         return Qt.formatDate(new Date(ms), Qt.DefaultLocaleShortDate)
     }
 
-    function addChannelDialog() {
-        var dlg = pageStack.push(urlDialog, {
-            dialogTitle: qsTr("Add channel"),
-            placeholder: qsTr("Channel URL (youtube.com/@handle, /channel/UC…)"),
-            fieldLabel: qsTr("Channel URL") })
-        dlg.accepted.connect(function() { ytSubs.addByUrl(dlg.url) })
-    }
-    function watchVideoDialog() {
-        var dlg = pageStack.push(urlDialog, {
-            dialogTitle: qsTr("Watch a video"),
-            placeholder: qsTr("Video URL (youtube.com/watch?v=…, youtu.be/…)"),
-            fieldLabel: qsTr("Video URL") })
-        dlg.accepted.connect(function() {
-            var id = ytSubs.videoIdFromUrl(dlg.url)
-            if (id.length === 0) { page.notify(qsTr("Not a valid video URL")); return }
-            pageStack.push(Qt.resolvedUrl("YtPlayerPage.qml"), { videoId: id })
-        })
-    }
-
     SilicaListView {
         id: list
         anchors.fill: parent
@@ -87,8 +69,10 @@ Page {
         }
 
         PullDownMenu {
-            MenuItem { text: qsTr("Add channel");        onClicked: page.addChannelDialog() }
-            MenuItem { text: qsTr("Watch a video");      onClicked: page.watchVideoDialog() }
+            MenuItem {
+                text: qsTr("Search videos and channels")
+                onClicked: pageStack.push(Qt.resolvedUrl("YtSearchPage.qml"))
+            }
             MenuItem {
                 text: qsTr("Import subscriptions")
                 onClicked: pageStack.push(importPicker)
@@ -112,7 +96,7 @@ Page {
         ViewPlaceholder {
             enabled: ytSubs.count === 0 && !ytSubs.busy
             text: qsTr("No subscriptions")
-            hintText: qsTr("Pull down to add a channel by URL, watch a video, or import a subscriptions file.")
+            hintText: qsTr("Pull down to search videos and channels, or import a subscriptions file.")
         }
 
         BusyIndicator {
@@ -167,31 +151,6 @@ Page {
         }
 
         VerticalScrollDecorator {}
-    }
-
-    // ── shared URL-entry dialog (add channel / watch video) ──────────────────
-    Component {
-        id: urlDialog
-        Dialog {
-            property string dialogTitle: ""
-            property string placeholder: ""
-            property string fieldLabel: ""
-            property alias url: field.text
-            canAccept: field.text.length > 0
-            Column {
-                width: parent.width
-                DialogHeader { title: dialogTitle }
-                TextField {
-                    id: field
-                    width: parent.width
-                    inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
-                    placeholderText: placeholder
-                    label: fieldLabel
-                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                    EnterKey.onClicked: parent.parent.accept()
-                }
-            }
-        }
     }
 
     // ── import picker (subscriptions .json or full-backup .zip) ──────────────

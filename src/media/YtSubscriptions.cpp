@@ -391,6 +391,26 @@ void YtSubscriptions::startUnseenFetch()
 
 // ── add by URL (interactive) ─────────────────────────────────────────────────
 
+void YtSubscriptions::addResolved(const QString &channelId, const QString &name,
+                                  const QString &avatar)
+{
+    if (channelId.isEmpty())
+        return;
+    if (contains(channelId)) {
+        emit error(tr("Already subscribed"));
+        return;
+    }
+    Sub sub;
+    sub.channelId = channelId;
+    sub.name = name.isEmpty() ? channelId : name;
+    sub.avatar = avatar;
+    sub.url = QStringLiteral("https://www.youtube.com/channel/") + channelId;
+    sub.lastSeen = QDateTime::currentMSecsSinceEpoch();  // new sub → no old backlog
+    appendSub(sub);
+    save();
+    emit added(sub.name);
+}
+
 void YtSubscriptions::addByUrl(const QString &rawUrl)
 {
     const QString url = rawUrl.trimmed();

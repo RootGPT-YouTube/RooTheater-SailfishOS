@@ -15,10 +15,10 @@ TARGET = harbour-rootheater
 # and on the app template truncates it to major.minor when expanded.
 # Displayed in-app (AboutPage) via APP_VERSION. RPM Version stays numeric (0.9.0
 # in the spec/yaml) since RPM forbids '-'; the "-beta" label lives in APP_VERSION.
-RT_APP_VERSION = 0.9.3-beta
+RT_APP_VERSION = 0.9.4-beta
 # VERSION must be a clean numeric for qmake (it's reserved / gets parsed); keep it
 # separate from RT_APP_VERSION so the "-beta" suffix doesn't reach it.
-VERSION = 0.9.3
+VERSION = 0.9.4
 
 CONFIG += sailfishapp sailfishapp_i18n c++17
 
@@ -45,7 +45,8 @@ SOURCES += src/harbour-rootheater.cpp \
     src/media/OpenHandler.cpp \
     src/media/ShareHandler.cpp \
     src/media/YtSubscriptions.cpp \
-    src/media/YtFeed.cpp
+    src/media/YtFeed.cpp \
+    src/media/YtSearch.cpp
 
 HEADERS += src/media/MediaProbe.h \
     src/media/MediaEngine.h \
@@ -62,7 +63,8 @@ HEADERS += src/media/MediaProbe.h \
     src/media/ShareHandler.h \
     src/media/CoverState.h \
     src/media/YtSubscriptions.h \
-    src/media/YtFeed.h
+    src/media/YtFeed.h \
+    src/media/YtSearch.h
 
 # License compliance: the GPLv3 text (and, as bundled libs land, their
 # LGPL/GPL/BSD texts) must reach whoever receives the RPM. AboutPage points
@@ -107,6 +109,7 @@ DISTFILES += LICENSE \
     qml/pages/YouTubePage.qml \
     qml/pages/YtChannelPage.qml \
     qml/pages/YtPlayerPage.qml \
+    qml/pages/YtSearchPage.qml \
     qml/pages/CoverPickerPage.qml \
     qml/images/rootgpt-avatar.png \
     qml/images/harbour-rootheater.svg \

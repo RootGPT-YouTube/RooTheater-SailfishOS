@@ -615,34 +615,6 @@
         <translation>%1 g fa</translation>
     </message>
     <message>
-        <source>Add channel</source>
-        <translation>Aggiungi canale</translation>
-    </message>
-    <message>
-        <source>Channel URL (youtube.com/@handle, /channel/UC…)</source>
-        <translation>URL canale (youtube.com/@handle, /channel/UC…)</translation>
-    </message>
-    <message>
-        <source>Channel URL</source>
-        <translation>URL canale</translation>
-    </message>
-    <message>
-        <source>Watch a video</source>
-        <translation>Guarda un video</translation>
-    </message>
-    <message>
-        <source>Video URL (youtube.com/watch?v=…, youtu.be/…)</source>
-        <translation>URL video (youtube.com/watch?v=…, youtu.be/…)</translation>
-    </message>
-    <message>
-        <source>Video URL</source>
-        <translation>URL video</translation>
-    </message>
-    <message>
-        <source>Not a valid video URL</source>
-        <translation>URL video non valido</translation>
-    </message>
-    <message>
         <source>YouTube</source>
         <translation>YouTube</translation>
     </message>
@@ -675,12 +647,16 @@
         <translation>Importazione canali…</translation>
     </message>
     <message>
-        <source>Pull down to add a channel by URL, watch a video, or import a subscriptions file.</source>
-        <translation>Tira giù per aggiungere un canale tramite URL, guardare un video o importare un file di iscrizioni.</translation>
-    </message>
-    <message>
         <source>Select a subscriptions file or backup</source>
         <translation>Seleziona un file di iscrizioni o un backup</translation>
+    </message>
+    <message>
+        <source>Search videos and channels</source>
+        <translation>Cerca video e canali</translation>
+    </message>
+    <message>
+        <source>Pull down to search videos and channels, or import a subscriptions file.</source>
+        <translation>Trascina verso il basso per cercare video e canali, o per importare un file di iscrizioni.</translation>
     </message>
 </context>
 <context>
@@ -731,6 +707,48 @@
     <message>
         <source>Loading…</source>
         <translation>Caricamento…</translation>
+    </message>
+</context>
+<context>
+    <name>YtSearch</name>
+    <message>
+        <source>No results</source>
+        <translation>Nessun risultato</translation>
+    </message>
+</context>
+<context>
+    <name>YtSearchPage</name>
+    <message>
+        <source>Added: %1</source>
+        <translation>Aggiunto: %1</translation>
+    </message>
+    <message>
+        <source>Search YouTube</source>
+        <translation>Cerca su YouTube</translation>
+    </message>
+    <message>
+        <source>Videos and channels</source>
+        <translation>Video e canali</translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <translation>Mostra</translation>
+    </message>
+    <message>
+        <source>Everything</source>
+        <translation>Tutto</translation>
+    </message>
+    <message>
+        <source>Videos</source>
+        <translation>Video</translation>
+    </message>
+    <message>
+        <source>Channels</source>
+        <translation>Canali</translation>
+    </message>
+    <message>
+        <source>Videos can be watched right away; channels can be added to your subscriptions.</source>
+        <translation>I video si possono guardare subito; i canali si possono aggiungere alle iscrizioni.</translation>
     </message>
 </context>
 <context>

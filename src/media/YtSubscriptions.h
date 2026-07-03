@@ -74,6 +74,12 @@ public:
     // already subscribed. Emits added()/error() when the async resolve finishes.
     Q_INVOKABLE void addByUrl(const QString &url);
 
+    // Add a channel whose id/name/avatar are ALREADY known (e.g. a search
+    // result) — appends + persists synchronously, no network. No-op if already
+    // subscribed. Emits added() like addByUrl.
+    Q_INVOKABLE void addResolved(const QString &channelId, const QString &name,
+                                 const QString &avatar);
+
     // Remove a subscription by channelId (persists).
     Q_INVOKABLE void remove(const QString &channelId);
     Q_INVOKABLE void removeList(const QStringList &channelIds);
