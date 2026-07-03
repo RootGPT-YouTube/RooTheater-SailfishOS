@@ -187,8 +187,8 @@ unauthenticated interfaces:
 - **Subscriptions** are read from each channel's public **RSS feed** — no Google
   API key, no OAuth, no login.
 - **Playback** opens YouTube's own **official web player** (`m.youtube.com`) inside
-  the Sailfish WebView (the same Gecko engine as the system browser), unmodified
-  and **with advertising intact**. RooTheater does **not** download, extract,
+  the Sailfish WebView (the same Gecko engine as the system browser),
+  unmodified. RooTheater does **not** download, extract,
   re-host, transcode or otherwise redistribute any YouTube content or streams.
 
 Using the Sailfish WebView / WebEngine QML modules is ordinary use of the
@@ -210,7 +210,7 @@ interfacce pubbliche e non autenticate:
   nessuna API key di Google, nessun OAuth, nessun login.
 - La **riproduzione** apre il **player web ufficiale** di YouTube
   (`m.youtube.com`) dentro la Sailfish WebView (lo stesso motore Gecko del browser
-  di sistema), non modificato e **con la pubblicità intatta**. RooTheater **non**
+  di sistema), non modificato. RooTheater **non**
   scarica, estrae, ri-ospita, transcodifica né ridistribuisce in alcun modo i
   contenuti o gli stream di YouTube.
 
