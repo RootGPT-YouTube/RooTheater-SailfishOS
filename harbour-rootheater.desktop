@@ -20,7 +20,7 @@ Capabilities=image/*;video/*;audio/*;
 SupportsMultipleFiles=no
 
 [X-Sailjail]
-Permissions=Audio;Videos;Music;Pictures;Documents;Downloads;RemovableMedia;UserDirs;Internet
+Permissions=Audio;Videos;Music;Pictures;Documents;Downloads;RemovableMedia;UserDirs;Internet;MediaIndexing
 OrganizationName=com.github.RootGPT_YouTube
 ApplicationName=rootheater
 ExecDBus=harbour-rootheater

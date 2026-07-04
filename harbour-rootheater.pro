@@ -15,10 +15,10 @@ TARGET = harbour-rootheater
 # and on the app template truncates it to major.minor when expanded.
 # Displayed in-app (AboutPage) via APP_VERSION. RPM Version stays numeric (0.9.0
 # in the spec/yaml) since RPM forbids '-'; the "-beta" label lives in APP_VERSION.
-RT_APP_VERSION = 0.9.4-beta
+RT_APP_VERSION = 0.9.5-beta
 # VERSION must be a clean numeric for qmake (it's reserved / gets parsed); keep it
 # separate from RT_APP_VERSION so the "-beta" suffix doesn't reach it.
-VERSION = 0.9.4
+VERSION = 0.9.5
 
 CONFIG += sailfishapp sailfishapp_i18n c++17
 
@@ -99,6 +99,15 @@ DISTFILES += LICENSE \
     qml/pages/AboutPage.qml \
     qml/pages/GalleryPage.qml \
     qml/pages/FolderContentPage.qml \
+    qml/pages/AudioFoldersPage.qml \
+    qml/pages/MusicSongsPage.qml \
+    qml/pages/MusicAlbumsPage.qml \
+    qml/pages/MusicArtistsPage.qml \
+    qml/pages/TrackerMusicModel.qml \
+    qml/pages/OptionsPage.qml \
+    qml/pages/AppPermissionsPage.qml \
+    qml/pages/PermissionSwitch.qml \
+    qml/pages/MusicQueries.js \
     qml/pages/ImageViewerPage.qml \
     qml/pages/ImageEditorPage.qml \
     qml/pages/PinchZoom.qml \

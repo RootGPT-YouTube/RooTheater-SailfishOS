@@ -61,6 +61,104 @@
     </message>
 </context>
 <context>
+    <name>AppPermissionsPage</name>
+    <message>
+        <source>App permissions</source>
+        <translation>App permissions</translation>
+    </message>
+    <message>
+        <source>Turn off the resources you don&apos;t want RooTheater to use. This only blocks the app internally — to fully revoke a system permission use the SailfishOS Settings.</source>
+        <translation>Turn off the resources you don&apos;t want RooTheater to use. This only blocks the app internally — to fully revoke a system permission use the SailfishOS Settings.</translation>
+    </message>
+    <message>
+        <source>Network</source>
+        <translation>Network</translation>
+    </message>
+    <message>
+        <source>Safe to turn off: RooTheater keeps working fully offline with your local media.</source>
+        <translation>Safe to turn off: RooTheater keeps working fully offline with your local media.</translation>
+    </message>
+    <message>
+        <source>Internet</source>
+        <translation>Internet</translation>
+    </message>
+    <message>
+        <source>YouTube (search, subscriptions, playback) and network streams. When off, those entries disappear from the Home page and the app makes no network connections.</source>
+        <translation>YouTube (search, subscriptions, playback) and network streams. When off, those entries disappear from the Home page and the app makes no network connections.</translation>
+    </message>
+    <message>
+        <source>Media library</source>
+        <translation>Media library</translation>
+    </message>
+    <message>
+        <source>System media index</source>
+        <translation>System media index</translation>
+    </message>
+    <message>
+        <source>The All songs / Albums / Artists views read the system media index (Tracker), the same source the stock Media app uses. When off, the Audio section only offers folder browsing.</source>
+        <translation>The All songs / Albums / Artists views read the system media index (Tracker), the same source the stock Media app uses. When off, the Audio section only offers folder browsing.</translation>
+    </message>
+    <message>
+        <source>Storages</source>
+        <translation>Storages</translation>
+    </message>
+    <message>
+        <source>A storage turned off is hidden from the Home page and never scanned.</source>
+        <translation>A storage turned off is hidden from the Home page and never scanned.</translation>
+    </message>
+    <message>
+        <source>Android storage</source>
+        <translation>Android storage</translation>
+    </message>
+    <message>
+        <source>Media shared with Android App Support apps.</source>
+        <translation>Media shared with Android App Support apps.</translation>
+    </message>
+    <message>
+        <source>SD card</source>
+        <translation>SD card</translation>
+    </message>
+    <message>
+        <source>Media on removable memory cards.</source>
+        <translation>Media on removable memory cards.</translation>
+    </message>
+    <message>
+        <source>System permissions</source>
+        <translation>System permissions</translation>
+    </message>
+    <message>
+        <source>Access to your files, audio playback and other low-level permissions are managed by SailfishOS. To revoke them, open the system Settings → Apps → RooTheater.</source>
+        <translation>Access to your files, audio playback and other low-level permissions are managed by SailfishOS. To revoke them, open the system Settings → Apps → RooTheater.</translation>
+    </message>
+</context>
+<context>
+    <name>AudioFoldersPage</name>
+    <message>
+        <source>Folders</source>
+        <translation>Folders</translation>
+    </message>
+    <message>
+        <source>item</source>
+        <translation>item</translation>
+    </message>
+    <message>
+        <source>items</source>
+        <translation>items</translation>
+    </message>
+    <message>
+        <source>No media found</source>
+        <translation>No media found</translation>
+    </message>
+    <message>
+        <source>Album cover</source>
+        <translation>Album cover</translation>
+    </message>
+    <message>
+        <source>Play album</source>
+        <translation>Play album</translation>
+    </message>
+</context>
+<context>
     <name>CoverPage</name>
     <message>
         <source>Multimedia player</source>
@@ -240,14 +338,6 @@
         <translation>Create audio playlist</translation>
     </message>
     <message>
-        <source>Album cover</source>
-        <translation>Album cover</translation>
-    </message>
-    <message>
-        <source>Play album</source>
-        <translation>Play album</translation>
-    </message>
-    <message>
         <source>Playlists</source>
         <translation>Playlists</translation>
     </message>
@@ -262,6 +352,54 @@
     <message>
         <source>Create video playlist</source>
         <translation>Create video playlist</translation>
+    </message>
+    <message>
+        <source>All songs</source>
+        <translation>All songs</translation>
+    </message>
+    <message>
+        <source>song</source>
+        <translation>song</translation>
+    </message>
+    <message>
+        <source>songs</source>
+        <translation>songs</translation>
+    </message>
+    <message>
+        <source>Albums</source>
+        <translation>Albums</translation>
+    </message>
+    <message>
+        <source>album</source>
+        <translation>album</translation>
+    </message>
+    <message>
+        <source>albums</source>
+        <translation>albums</translation>
+    </message>
+    <message>
+        <source>Artists</source>
+        <translation>Artists</translation>
+    </message>
+    <message>
+        <source>artist</source>
+        <translation>artist</translation>
+    </message>
+    <message>
+        <source>artists</source>
+        <translation>artists</translation>
+    </message>
+    <message>
+        <source>Folders</source>
+        <translation>Folders</translation>
+    </message>
+    <message>
+        <source>folder</source>
+        <translation>folder</translation>
+    </message>
+    <message>
+        <source>folders</source>
+        <translation>folders</translation>
     </message>
 </context>
 <context>
@@ -319,10 +457,6 @@
 </context>
 <context>
     <name>MainPage</name>
-    <message>
-        <source>About</source>
-        <translation>About</translation>
-    </message>
     <message>
         <source>Open network stream…</source>
         <translation>Open network stream…</translation>
@@ -390,6 +524,210 @@
     <message>
         <source>Deleting channel</source>
         <translation>Deleting channel</translation>
+    </message>
+    <message>
+        <source>Options</source>
+        <translation>Options</translation>
+    </message>
+</context>
+<context>
+    <name>MusicAlbumsPage</name>
+    <message>
+        <source>Unknown artist</source>
+        <translation>Unknown artist</translation>
+    </message>
+    <message>
+        <source>Unknown album</source>
+        <translation>Unknown album</translation>
+    </message>
+    <message>
+        <source>Multiple artists</source>
+        <translation>Multiple artists</translation>
+    </message>
+    <message>
+        <source>Albums</source>
+        <translation>Albums</translation>
+    </message>
+    <message>
+        <source>Sorting</source>
+        <translation>Sorting</translation>
+    </message>
+    <message>
+        <source>song</source>
+        <translation>song</translation>
+    </message>
+    <message>
+        <source>songs</source>
+        <translation>songs</translation>
+    </message>
+    <message>
+        <source>No albums</source>
+        <translation>No albums</translation>
+    </message>
+    <message>
+        <source>Music indexed by the system appears here</source>
+        <translation>Music indexed by the system appears here</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Sort by</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Artist</source>
+        <translation>Artist</translation>
+    </message>
+    <message>
+        <source>Order</source>
+        <translation>Order</translation>
+    </message>
+    <message>
+        <source>Ascending</source>
+        <translation>Ascending</translation>
+    </message>
+    <message>
+        <source>Descending</source>
+        <translation>Descending</translation>
+    </message>
+</context>
+<context>
+    <name>MusicArtistsPage</name>
+    <message>
+        <source>Unknown artist</source>
+        <translation>Unknown artist</translation>
+    </message>
+    <message>
+        <source>Artists</source>
+        <translation>Artists</translation>
+    </message>
+    <message>
+        <source>Sorting</source>
+        <translation>Sorting</translation>
+    </message>
+    <message>
+        <source>song</source>
+        <translation>song</translation>
+    </message>
+    <message>
+        <source>songs</source>
+        <translation>songs</translation>
+    </message>
+    <message>
+        <source>No artists</source>
+        <translation>No artists</translation>
+    </message>
+    <message>
+        <source>Music indexed by the system appears here</source>
+        <translation>Music indexed by the system appears here</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Sort by</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>Songs</source>
+        <translation>Songs</translation>
+    </message>
+    <message>
+        <source>Order</source>
+        <translation>Order</translation>
+    </message>
+    <message>
+        <source>Ascending</source>
+        <translation>Ascending</translation>
+    </message>
+    <message>
+        <source>Descending</source>
+        <translation>Descending</translation>
+    </message>
+</context>
+<context>
+    <name>MusicSongsPage</name>
+    <message>
+        <source>Unknown artist</source>
+        <translation>Unknown artist</translation>
+    </message>
+    <message>
+        <source>Unknown album</source>
+        <translation>Unknown album</translation>
+    </message>
+    <message>
+        <source>Sorting</source>
+        <translation>Sorting</translation>
+    </message>
+    <message>
+        <source>Play all</source>
+        <translation>Play all</translation>
+    </message>
+    <message>
+        <source>No songs</source>
+        <translation>No songs</translation>
+    </message>
+    <message>
+        <source>Music indexed by the system appears here</source>
+        <translation>Music indexed by the system appears here</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Sort by</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <translation>Title</translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <translation>Track</translation>
+    </message>
+    <message>
+        <source>Artist</source>
+        <translation>Artist</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation>Date</translation>
+    </message>
+    <message>
+        <source>Order</source>
+        <translation>Order</translation>
+    </message>
+    <message>
+        <source>Ascending</source>
+        <translation>Ascending</translation>
+    </message>
+    <message>
+        <source>Descending</source>
+        <translation>Descending</translation>
+    </message>
+</context>
+<context>
+    <name>OptionsPage</name>
+    <message>
+        <source>Options</source>
+        <translation>Options</translation>
+    </message>
+    <message>
+        <source>Permissions</source>
+        <translation>Permissions</translation>
+    </message>
+    <message>
+        <source>Choose which resources RooTheater may use</source>
+        <translation>Choose which resources RooTheater may use</translation>
+    </message>
+    <message>
+        <source>Version, license and credits</source>
+        <translation>Version, license and credits</translation>
     </message>
 </context>
 <context>

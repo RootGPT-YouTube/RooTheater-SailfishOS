@@ -86,7 +86,9 @@ and no spec excludes for ffmpeg.
   subscribe to channels via their public RSS feeds, import/export subscription
   backups, Home grid with unseen-video badges, **in-app search for videos and
   channels**, and in-app playback of the official mobile watch page in the
-  Sailfish WebView (see the YouTube note below).
+  Sailfish WebView (see the YouTube note below). Video decoding is
+  **hardware-accelerated** by the system Gecko engine (gmp-droid → droidmedia)
+  where the device supports the codec.
 - **System integration**: "Open with" and "Share with" handlers, live cover
   with playback controls, EN/IT translations.
 - Built and vendored for all three architectures: **aarch64, armv7hl, i486**.
@@ -224,6 +226,8 @@ unauthenticated interfaces:
   the Sailfish WebView (the same Gecko engine as the system browser),
   unmodified. RooTheater does **not** download, extract,
   re-host, transcode or otherwise redistribute any YouTube content or streams.
+  Video decoding is hardware-accelerated by the system's Gecko media stack
+  (gmp-droid) on devices that expose the codec in hardware.
 
 Using the Sailfish WebView / WebEngine QML modules is ordinary use of the
 operating system's public APIs; those components are provided by SailfishOS at
@@ -247,6 +251,8 @@ interfacce pubbliche e non autenticate:
   di sistema), non modificato. RooTheater **non**
   scarica, estrae, ri-ospita, transcodifica né ridistribuisce in alcun modo i
   contenuti o gli stream di YouTube.
+  La decodifica video è accelerata in hardware dallo stack multimediale di
+  Gecko (gmp-droid) sui dispositivi che espongono il codec in hardware.
 
 L'uso dei moduli QML Sailfish WebView / WebEngine è normale utilizzo delle API
 pubbliche del sistema operativo; tali componenti sono forniti da SailfishOS a

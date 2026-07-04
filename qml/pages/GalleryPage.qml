@@ -3,6 +3,7 @@ import Sailfish.Silica 1.0
 import Nemo.Thumbnailer 1.0
 import Nemo.Configuration 1.0
 import RooTheater.Media 1.0
+import "MusicQueries.js" as MusicQueries
 
 Page {
     id: page
@@ -10,10 +11,6 @@ Page {
 
     property string rootPath: ""
     property string title: ""
-
-    // Long-press target: the audio album row's model data, or null when hidden.
-    // ({ folderName, folderPath, items })
-    property var actionAlbum: null
 
     // A playlist's kind follows where the builder saved it: Videos/ → video
     // (square play badge), otherwise audio (musical-note badge).
@@ -29,50 +26,61 @@ Page {
         return key
     }
 
-    // ── Per-album cover choice (dconf JSON map folderPath -> image url) ───────
+    // ── Music library categories (Tracker-backed, like the stock Media app) ──
+    // The internal storage excludes android_storage, which is its own entry.
+    readonly property string excludePath:
+        rootPath.indexOf("android_storage") >= 0 ? "" : rootPath + "/android_storage"
+    readonly property var libraryOpts: ({ rootPath: rootPath, excludePath: excludePath })
+
+    // Soft permission gate (Options → Permissions): with the media index off,
+    // no Tracker query runs and the Audio section only offers folder browsing.
     ConfigurationValue {
-        id: albumCoverConfig
-        key: "/apps/harbour-rootheater/albumCovers"
-        defaultValue: "{}"
+        id: permMediaLibrary
+        key: "/apps/harbour-rootheater/perm/medialibrary"
+        defaultValue: true
     }
-    property int coverTick: 0   // bumped to refresh cover bindings after a change
-    function coverFor(folderPath) {
-        coverTick                 // binding dependency
-        var map = {}
-        try { map = JSON.parse(albumCoverConfig.value) } catch (e) { map = {} }
-        return map[folderPath] || ""
+    readonly property bool libraryAllowed:
+        permMediaLibrary.value !== false && permMediaLibrary.value !== "false"
+
+    // -1 = not fetched yet (subtitle stays empty until Tracker answers).
+    property int songCount: -1
+    property int albumCount: -1
+    property int artistCount: -1
+
+    TrackerMusicModel {
+        id: songsCountModel
+        query: page.rootPath !== "" && page.libraryAllowed
+               ? MusicQueries.songsCountQuery(page.libraryOpts) : ""
+        onFinished: page.songCount = count > 0 ? getMediaItem(0).childCount : 0
     }
-    function setCover(folderPath, url) {
-        var map = {}
-        try { map = JSON.parse(albumCoverConfig.value) } catch (e) { map = {} }
-        map[folderPath] = url
-        albumCoverConfig.value = JSON.stringify(map)
-        coverTick++
+    TrackerMusicModel {
+        id: albumsCountModel
+        query: page.rootPath !== "" && page.libraryAllowed
+               ? MusicQueries.albumsCountQuery(page.libraryOpts) : ""
+        onFinished: page.albumCount = count > 0 ? getMediaItem(0).childCount : 0
     }
-    // Cover to show for an audio album row: the chosen image, else the embedded
-    // art of the first track (lazy via rttrackcover), else "" → ♪ placeholder.
-    function albumCoverSource(folderPath, firstPath) {
-        var c = coverFor(folderPath)
-        if (c && c.length > 0)
-            return c.indexOf("file://") === 0 ? c : "file://" + c
-        return firstPath ? "image://rttrackcover/" + encodeURIComponent(firstPath) : ""
+    TrackerMusicModel {
+        id: artistsCountModel
+        query: page.rootPath !== "" && page.libraryAllowed
+               ? MusicQueries.artistsCountQuery(page.libraryOpts) : ""
+        onFinished: page.artistCount = count > 0 ? getMediaItem(0).childCount : 0
     }
 
-    function pickCover(folderPath) {
-        var picker = pageStack.push(Qt.resolvedUrl("CoverPickerPage.qml"),
-                                    { caller: page })
-        picker.coverSelected.connect(function(path) {
-            page.setCover(folderPath, path)
-        })
-    }
-
-    function playAlbum(items) {
-        if (!items || items.length === 0)
-            return
-        var paths = []
-        for (var i = 0; i < items.length; ++i)
-            paths.push(items[i].filePath)
-        pageStack.push(Qt.resolvedUrl("PlayerPage.qml"), { queue: paths, trackIndex: 0 })
+    function openCategory(act) {
+        if (act === "songs")
+            pageStack.push(Qt.resolvedUrl("MusicSongsPage.qml"),
+                           { title: qsTr("All songs"),
+                             rootPath: rootPath, excludePath: excludePath })
+        else if (act === "albums")
+            pageStack.push(Qt.resolvedUrl("MusicAlbumsPage.qml"),
+                           { rootPath: rootPath, excludePath: excludePath })
+        else if (act === "artists")
+            pageStack.push(Qt.resolvedUrl("MusicArtistsPage.qml"),
+                           { rootPath: rootPath, excludePath: excludePath })
+        else
+            pageStack.push(Qt.resolvedUrl("AudioFoldersPage.qml"),
+                           { owner: page, galleryModel: galleryModel,
+                             title: page.title })
     }
 
     // ── Row preview honouring the per-folder sort ────────────────────────────
@@ -147,135 +155,180 @@ Page {
         section.property: "typeKey"
         section.delegate: SectionHeader { text: page.typeLabel(section) }
 
-        delegate: ListItem {
+        delegate: Item {
             id: row
-            contentHeight: Theme.itemSizeLarge
+            width: listView.width
+            height: isAudio ? categoryColumn.height : Theme.itemSizeLarge
 
             readonly property bool isAudio: typeKey === "audio"
             readonly property bool isPlaylist: typeKey === "playlist"
 
-            // Non-audio: thumbnail of the item shown first when opening the folder
-            // (i.e. honouring that folder's saved sort), not a fixed one.
-            readonly property var firstItem: (!row.isAudio && !row.isPlaylist)
-                                             ? page.firstItem(folderPath, typeKey, items)
-                                             : null
-            Thumbnail {
-                id: preview
-                anchors.verticalCenter: parent.verticalCenter
-                x: Theme.horizontalPageMargin
-                width: Theme.itemSizeLarge - Theme.paddingMedium
-                height: width
-                visible: !row.isAudio && !row.isPlaylist
-                source: row.firstItem ? row.firstItem.filePath : ""
-                mimeType: row.firstItem ? (row.firstItem.mimeType || "") : ""
-                sourceSize.width: width
-                sourceSize.height: height
-                fillMode: Thumbnail.PreserveAspectCrop
-                clip: true
-            }
-
-            // Audio: album cover (chosen / embedded), with a ♪ placeholder.
-            Item {
-                id: audioCover
-                anchors.verticalCenter: parent.verticalCenter
-                x: Theme.horizontalPageMargin
-                width: Theme.itemSizeLarge - Theme.paddingMedium
-                height: width
+            // ── Audio: library categories (songs / albums / artists / folders),
+            // Tracker-backed like the stock Media app, instead of folder rows.
+            Column {
+                id: categoryColumn
+                width: parent.width
                 visible: row.isAudio
 
-                Rectangle {
-                    anchors.fill: parent
-                    color: Theme.rgba(Theme.highlightBackgroundColor, 0.1)
-                    visible: coverImage.status !== Image.Ready
+                Repeater {
+                    model: {
+                        if (!row.isAudio)
+                            return []
+                        var m = []
+                        if (page.libraryAllowed) {
+                            m.push({ act: "songs", icon: "icon-m-media-songs",
+                                     label: qsTr("All songs"),
+                                     sub: page.songCount < 0 ? ""
+                                          : page.songCount + " " + (page.songCount === 1
+                                                ? qsTr("song") : qsTr("songs")) })
+                            m.push({ act: "albums", icon: "icon-m-media-albums",
+                                     label: qsTr("Albums"),
+                                     sub: page.albumCount < 0 ? ""
+                                          : page.albumCount + " " + (page.albumCount === 1
+                                                ? qsTr("album") : qsTr("albums")) })
+                            m.push({ act: "artists", icon: "icon-m-media-artists",
+                                     label: qsTr("Artists"),
+                                     sub: page.artistCount < 0 ? ""
+                                          : page.artistCount + " " + (page.artistCount === 1
+                                                ? qsTr("artist") : qsTr("artists")) })
+                        }
+                        m.push({ act: "folders", icon: "icon-m-file-folder",
+                                 label: qsTr("Folders"),
+                                 sub: galleryModel.audioFolders.length + " "
+                                      + (galleryModel.audioFolders.length === 1
+                                            ? qsTr("folder") : qsTr("folders")) })
+                        return m
+                    }
+                    delegate: BackgroundItem {
+                        width: categoryColumn.width
+                        height: Theme.itemSizeMedium
+
+                        Image {
+                            id: categoryIcon
+                            x: Theme.horizontalPageMargin
+                            anchors.verticalCenter: parent.verticalCenter
+                            source: "image://theme/" + modelData.icon + "?"
+                                    + (highlighted ? Theme.highlightColor
+                                                   : Theme.primaryColor)
+                        }
+                        Column {
+                            anchors {
+                                left: categoryIcon.right
+                                leftMargin: Theme.paddingLarge
+                                right: parent.right
+                                rightMargin: Theme.horizontalPageMargin
+                                verticalCenter: parent.verticalCenter
+                            }
+                            Label {
+                                width: parent.width
+                                truncationMode: TruncationMode.Fade
+                                text: modelData.label
+                                color: highlighted ? Theme.highlightColor
+                                                   : Theme.primaryColor
+                            }
+                            Label {
+                                visible: text !== ""
+                                text: modelData.sub
+                                color: highlighted ? Theme.secondaryHighlightColor
+                                                   : Theme.secondaryColor
+                                font.pixelSize: Theme.fontSizeSmall
+                            }
+                        }
+                        onClicked: page.openCategory(modelData.act)
+                    }
                 }
-                Label {
-                    anchors.centerIn: parent
-                    visible: coverImage.status !== Image.Ready
-                    text: "♪"
-                    color: Theme.secondaryColor
-                    font.pixelSize: parent.height * 0.5
-                }
-                Image {
-                    id: coverImage
-                    anchors.fill: parent
-                    fillMode: Image.PreserveAspectCrop
+            }
+
+            // ── Image / video / playlist: folder row (unchanged behaviour) ──
+            ListItem {
+                id: folderRow
+                width: parent.width
+                contentHeight: Theme.itemSizeLarge
+                visible: !row.isAudio
+
+                // Thumbnail of the item shown first when opening the folder
+                // (i.e. honouring that folder's saved sort), not a fixed one.
+                readonly property var firstItem: (!row.isAudio && !row.isPlaylist)
+                                                 ? page.firstItem(folderPath, typeKey, items)
+                                                 : null
+                Thumbnail {
+                    id: preview
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: Theme.horizontalPageMargin
+                    width: Theme.itemSizeLarge - Theme.paddingMedium
+                    height: width
+                    visible: !row.isPlaylist
+                    source: folderRow.firstItem ? folderRow.firstItem.filePath : ""
+                    mimeType: folderRow.firstItem ? (folderRow.firstItem.mimeType || "") : ""
+                    sourceSize.width: width
+                    sourceSize.height: height
+                    fillMode: Thumbnail.PreserveAspectCrop
                     clip: true
-                    asynchronous: true
-                    cache: false
-                    source: row.isAudio
-                            ? page.albumCoverSource(folderPath,
-                                  items.length > 0 ? items[0].filePath : "")
-                            : ""
                 }
-            }
 
-            // Playlist folder badge: musical note for audio, square play for video.
-            Item {
-                anchors.verticalCenter: parent.verticalCenter
-                x: Theme.horizontalPageMargin
-                width: Theme.itemSizeLarge - Theme.paddingMedium
-                height: width
-                visible: row.isPlaylist
+                // Playlist folder badge: musical note for audio, square play for video.
+                Item {
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: Theme.horizontalPageMargin
+                    width: Theme.itemSizeLarge - Theme.paddingMedium
+                    height: width
+                    visible: row.isPlaylist
 
-                readonly property bool isVideoPlaylist:
-                    row.isPlaylist && page.playlistKind(folderPath) === "video"
+                    readonly property bool isVideoPlaylist:
+                        row.isPlaylist && page.playlistKind(folderPath) === "video"
 
-                Rectangle {
-                    anchors.fill: parent
-                    color: Theme.rgba(Theme.highlightBackgroundColor, 0.1)
+                    Rectangle {
+                        anchors.fill: parent
+                        color: Theme.rgba(Theme.highlightBackgroundColor, 0.1)
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !parent.isVideoPlaylist
+                        text: "♪"
+                        color: Theme.secondaryColor
+                        font.pixelSize: parent.height * 0.5
+                    }
+                    Image {
+                        anchors.centerIn: parent
+                        visible: parent.isVideoPlaylist
+                        source: "image://theme/icon-m-media-playlists?" + Theme.secondaryColor
+                    }
                 }
-                Label {
-                    anchors.centerIn: parent
-                    visible: !parent.isVideoPlaylist
-                    text: "♪"
-                    color: Theme.secondaryColor
-                    font.pixelSize: parent.height * 0.5
-                }
-                Image {
-                    anchors.centerIn: parent
-                    visible: parent.isVideoPlaylist
-                    source: "image://theme/icon-m-media-playlists?" + Theme.secondaryColor
-                }
-            }
 
-            Column {
-                anchors {
-                    left: preview.right
-                    leftMargin: Theme.paddingLarge
-                    right: parent.right
-                    rightMargin: Theme.horizontalPageMargin
-                    verticalCenter: parent.verticalCenter
+                Column {
+                    anchors {
+                        left: preview.right
+                        leftMargin: Theme.paddingLarge
+                        right: parent.right
+                        rightMargin: Theme.horizontalPageMargin
+                        verticalCenter: parent.verticalCenter
+                    }
+                    Label {
+                        width: parent.width
+                        truncationMode: TruncationMode.Fade
+                        text: folderName
+                        color: folderRow.highlighted ? Theme.highlightColor : Theme.primaryColor
+                    }
+                    Label {
+                        text: row.isPlaylist
+                              ? count + " " + (count === 1 ? qsTr("playlist") : qsTr("playlists"))
+                              : count + " " + (count === 1 ? qsTr("item") : qsTr("items"))
+                        color: folderRow.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
+                        font.pixelSize: Theme.fontSizeSmall
+                    }
                 }
-                Label {
-                    width: parent.width
-                    truncationMode: TruncationMode.Fade
-                    text: folderName
-                    color: row.highlighted ? Theme.highlightColor : Theme.primaryColor
-                }
-                Label {
-                    text: row.isPlaylist
-                          ? count + " " + (count === 1 ? qsTr("playlist") : qsTr("playlists"))
-                          : count + " " + (count === 1 ? qsTr("item") : qsTr("items"))
-                    color: row.highlighted ? Theme.secondaryHighlightColor : Theme.secondaryColor
-                    font.pixelSize: Theme.fontSizeSmall
-                }
-            }
 
-            onClicked: {
-                if (row.isPlaylist)
-                    pageStack.push(Qt.resolvedUrl("PlaylistsPage.qml"),
-                                   { title: folderName, items: items, owner: page,
-                                     kind: page.playlistKind(folderPath) })
-                else
-                    pageStack.push(Qt.resolvedUrl("FolderContentPage.qml"),
-                                   { title: folderName, kind: typeKey,
-                                     folderPath: folderPath, items: items,
-                                     owner: page })
-            }
-            onPressAndHold: {
-                if (row.isAudio)
-                    page.actionAlbum = { folderName: folderName,
-                                         folderPath: folderPath, items: items }
+                onClicked: {
+                    if (row.isPlaylist)
+                        pageStack.push(Qt.resolvedUrl("PlaylistsPage.qml"),
+                                       { title: folderName, items: items, owner: page,
+                                         kind: page.playlistKind(folderPath) })
+                    else
+                        pageStack.push(Qt.resolvedUrl("FolderContentPage.qml"),
+                                       { title: folderName, kind: typeKey,
+                                         folderPath: folderPath, items: items,
+                                         owner: page })
+                }
             }
         }
 
@@ -293,90 +346,5 @@ Page {
         size: BusyIndicatorSize.Large
         running: galleryModel.scanning
         visible: running
-    }
-
-    // ── Album long-press action sheet (slides up from the bottom) ────────────
-    Item {
-        id: actionOverlay
-        anchors.fill: parent
-        enabled: page.actionAlbum !== null
-        visible: opacity > 0
-        opacity: page.actionAlbum !== null ? 1.0 : 0.0
-        Behavior on opacity { FadeAnimation { duration: 150 } }
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: page.actionAlbum = null
-            Rectangle { anchors.fill: parent; color: Theme.rgba("black", 0.6) }
-        }
-
-        Rectangle {
-            id: sheet
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            anchors.bottomMargin: page.actionAlbum !== null ? 0 : -height
-            height: sheetCol.height
-            color: Theme.rgba(Theme.overlayBackgroundColor, 1.0)
-            Behavior on anchors.bottomMargin {
-                NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
-            }
-
-            MouseArea { anchors.fill: parent }
-
-            Column {
-                id: sheetCol
-                width: parent.width
-
-                Label {
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    x: Theme.horizontalPageMargin
-                    topPadding: Theme.paddingLarge
-                    bottomPadding: Theme.paddingMedium
-                    truncationMode: TruncationMode.Fade
-                    color: Theme.highlightColor
-                    font.pixelSize: Theme.fontSizeSmall
-                    text: page.actionAlbum ? page.actionAlbum.folderName : ""
-                }
-
-                Separator {
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    color: Theme.secondaryColor
-                }
-
-                Repeater {
-                    model: [
-                        { label: qsTr("Album cover"), act: "cover", icon: "icon-m-image" },
-                        { label: qsTr("Play album"),  act: "play",  icon: "icon-m-play" }
-                    ]
-                    delegate: BackgroundItem {
-                        width: sheetCol.width
-                        Row {
-                            x: Theme.horizontalPageMargin
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: Theme.paddingLarge
-                            Image {
-                                anchors.verticalCenter: parent.verticalCenter
-                                source: "image://theme/" + modelData.icon + "?"
-                                        + (highlighted ? Theme.highlightColor : Theme.primaryColor)
-                            }
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.label
-                                color: highlighted ? Theme.highlightColor : Theme.primaryColor
-                            }
-                        }
-                        onClicked: {
-                            var al = page.actionAlbum
-                            page.actionAlbum = null
-                            if (!al) return
-                            if (modelData.act === "cover")
-                                page.pickCover(al.folderPath)
-                            else
-                                page.playAlbum(al.items)
-                        }
-                    }
-                }
-            }
-        }
     }
 }

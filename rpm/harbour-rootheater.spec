@@ -9,7 +9,7 @@ Name:       harbour-rootheater
 # << macros
 
 Summary:    RooTheater is a multimedia player for Sailfish OS
-Version:    0.9.4
+Version:    0.9.5
 Release:    1
 Group:      Qt/Qt
 License:    GPL-3.0
@@ -20,6 +20,8 @@ Requires:   sailfishsilica-qt5 >= 0.10.9
 Requires:   nemo-qml-plugin-configuration-qt5
 Requires:   sailfish-components-webview-qt5
 Requires:   qt5-plugin-sqldriver-sqlite
+Requires:   grilo-qt5-qml-plugin
+Requires:   grilo-plugin-tracker
 BuildRequires:  pkgconfig(sailfishapp) >= 1.0.2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Qml)

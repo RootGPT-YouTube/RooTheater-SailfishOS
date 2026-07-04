@@ -19,6 +19,14 @@ Page {
     property int trackIndex: 0
     readonly property bool albumMode: queue.length > 1
 
+    // Optional queue metadata from the Tracker-backed music pages
+    // (path → { title, artist, album }). Preferred over the ffmpeg TagReader,
+    // which cannot interpret every file the system indexer can.
+    property var queueMeta: ({})
+    function metaFor() {
+        return (queueMeta && queueMeta[source]) ? queueMeta[source] : null
+    }
+
     // Optional cover image for the whole queue (a playlist's chosen cover). Takes
     // priority over a track's embedded art on the app cover. "" = none.
     property string playlistCover: ""
@@ -107,7 +115,11 @@ Page {
     }
 
     // ── App cover (audio/video): title from metadata, fallback to file name ──
+    // Tracker metadata (queueMeta) wins, then the file's own tags (TagReader).
     function coverDisplayTitle() {
+        var m = metaFor()
+        if (m && m.title && m.title !== "")
+            return m.title
         if (coverTag.title && coverTag.title !== "")
             return coverTag.title
         var s = page.source
@@ -117,6 +129,9 @@ Page {
     }
     // Subtitle: album/playlist name when known, else just the media kind.
     function coverDisplaySubtitle() {
+        var m = metaFor()
+        if (m && m.album && m.album !== "")
+            return m.album
         if (coverTag.album && coverTag.album !== "")
             return coverTag.album
         return engine.hasVideo ? qsTr("Video") : qsTr("Audio")

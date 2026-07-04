@@ -1,5 +1,6 @@
 import QtQuick 2.0
 import Sailfish.Silica 1.0
+import Nemo.Configuration 1.0
 import RooTheater.Media 1.0
 
 Page {
@@ -8,6 +9,31 @@ Page {
 
     // Discovered at startup: internal / Android / SD-card roots for the gallery.
     StorageRoots { id: storage }
+
+    // ── Soft permission gates (Options → Permissions; default granted) ───────
+    // Honoured BEFORE using the resource: with internet off no network entry is
+    // reachable and no request leaves the app; a storage turned off is hidden.
+    ConfigurationValue {
+        id: permInternet
+        key: "/apps/harbour-rootheater/perm/internet"
+        defaultValue: true
+    }
+    ConfigurationValue {
+        id: permAndroid
+        key: "/apps/harbour-rootheater/perm/android"
+        defaultValue: true
+    }
+    ConfigurationValue {
+        id: permSdcard
+        key: "/apps/harbour-rootheater/perm/sdcard"
+        defaultValue: true
+    }
+    readonly property bool internetAllowed:
+        permInternet.value !== false && permInternet.value !== "false"
+    readonly property bool androidAllowed:
+        permAndroid.value !== false && permAndroid.value !== "false"
+    readonly property bool sdcardAllowed:
+        permSdcard.value !== false && permSdcard.value !== "false"
 
     // ── YouTube RSS: unseen badges + multi-select on the Home grid ────────────
     property bool ytSelectMode: false
@@ -42,11 +68,13 @@ Page {
         chanMenu.show()
     }
 
-    // Refresh the "unseen" counts when the Home page is shown.
-    onStatusChanged: if (status === PageStatus.Active) ytSubs.refreshUnseen()
+    // Refresh the "unseen" counts when the Home page is shown (fetches the
+    // channels' RSS feeds → gated by the internet permission).
+    onStatusChanged: if (status === PageStatus.Active && page.internetAllowed)
+                         ytSubs.refreshUnseen()
     Connections {
         target: ytSubs
-        onFillFinished: ytSubs.refreshUnseen()   // after an import completes
+        onFillFinished: if (page.internetAllowed) ytSubs.refreshUnseen()   // after an import completes
     }
 
     RemorsePopup { id: ytRemorse }
@@ -57,14 +85,16 @@ Page {
 
         PullDownMenu {
             MenuItem {
-                text: qsTr("About")
-                onClicked: pageStack.push(Qt.resolvedUrl("AboutPage.qml"))
+                text: qsTr("Options")
+                onClicked: pageStack.push(Qt.resolvedUrl("OptionsPage.qml"))
             }
             MenuItem {
+                visible: page.internetAllowed
                 text: qsTr("YouTube")
                 onClicked: pageStack.push(Qt.resolvedUrl("YouTubePage.qml"))
             }
             MenuItem {
+                visible: page.internetAllowed
                 text: qsTr("Open network stream…")
                 onClicked: page.openUrlDialog()
             }
@@ -83,21 +113,29 @@ Page {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * Theme.horizontalPageMargin
                 wrapMode: Text.WordWrap
+                visible: page.internetAllowed
                 color: Theme.secondaryHighlightColor
                 text: qsTr("Pull down to open a network stream.")
             }
 
-            // Gallery: three storage categories. Each opens a folder-grouped grid
-            // of the images and videos found under that storage root.
+            // Gallery: the storage categories (filtered by the storage gates).
+            // Each opens a folder-grouped grid of the media found under that root.
             Repeater {
-                model: [
-                    { title: qsTr("Internal memory"), icon: "image://theme/icon-m-device",
-                      root: storage.internalRoot },
-                    { title: qsTr("Android storage"), icon: "image://theme/icon-m-other",
-                      root: storage.androidRoot },
-                    { title: qsTr("SD card"), icon: "image://theme/icon-m-sd-card",
-                      root: storage.sdcardRoots.length > 0 ? storage.sdcardRoots[0] : "" }
-                ]
+                model: {
+                    var m = [ { title: qsTr("Internal memory"),
+                                icon: "image://theme/icon-m-device",
+                                root: storage.internalRoot } ]
+                    if (page.androidAllowed)
+                        m.push({ title: qsTr("Android storage"),
+                                 icon: "image://theme/icon-m-other",
+                                 root: storage.androidRoot })
+                    if (page.sdcardAllowed)
+                        m.push({ title: qsTr("SD card"),
+                                 icon: "image://theme/icon-m-sd-card",
+                                 root: storage.sdcardRoots.length > 0
+                                       ? storage.sdcardRoots[0] : "" })
+                    return m
+                }
                 delegate: BackgroundItem {
                     width: page.width
                     onClicked: pageStack.push(Qt.resolvedUrl("GalleryPage.qml"),
@@ -127,7 +165,7 @@ Page {
             Item {
                 width: parent.width
                 height: Theme.itemSizeSmall
-                visible: ytSubs.count > 0
+                visible: ytSubs.count > 0 && page.internetAllowed
 
                 SectionHeader {
                     anchors.verticalCenter: parent.verticalCenter
@@ -166,7 +204,7 @@ Page {
             }
             Grid {
                 id: ytGrid
-                visible: ytSubs.count > 0
+                visible: ytSubs.count > 0 && page.internetAllowed
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * Theme.horizontalPageMargin
                 // `cell` is the *target* tile width; the column count rounds to

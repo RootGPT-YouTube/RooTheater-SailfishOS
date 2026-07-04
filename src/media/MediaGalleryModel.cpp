@@ -71,7 +71,7 @@ const char *typeKey(int t)
 MediaGalleryModel::MediaGalleryModel(QObject *parent)
     : QAbstractListModel(parent)
 {
-    connect(&m_watcher, &QFutureWatcher<QVector<GalleryGroup>>::finished,
+    connect(&m_watcher, &QFutureWatcher<GalleryScanResult>::finished,
             this, &MediaGalleryModel::onScanFinished);
 }
 
@@ -172,13 +172,38 @@ void MediaGalleryModel::removePaths(const QStringList &paths)
     }
     if (removedGroup)
         emit countChanged();
+
+    // Keep the per-folder audio breakdown (the "Folders" view) in sync too.
+    bool foldersChanged = false;
+    for (int i = m_audioFolders.size() - 1; i >= 0; --i) {
+        QVariantMap folder = m_audioFolders.at(i).toMap();
+        const QVariantList items = folder.value("items").toList();
+        QVariantList kept;
+        for (const QVariant &v : items)
+            if (!drop.contains(v.toMap().value("filePath").toString()))
+                kept.append(v);
+        if (kept.size() == items.size())
+            continue;
+        foldersChanged = true;
+        if (kept.isEmpty()) {
+            m_audioFolders.removeAt(i);
+        } else {
+            folder.insert("items", kept);
+            m_audioFolders[i] = folder;
+        }
+    }
+    if (foldersChanged)
+        emit audioFoldersChanged();
 }
 
 void MediaGalleryModel::onScanFinished()
 {
+    const GalleryScanResult res = m_watcher.result();
     beginResetModel();
-    m_groups = m_watcher.result();
+    m_groups = res.rows;
     endResetModel();
+    m_audioFolders = res.audioFolders;
+    emit audioFoldersChanged();
 
     if (m_scanning) {
         m_scanning = false;
@@ -190,11 +215,14 @@ void MediaGalleryModel::onScanFinished()
 // Worker thread: walk `root` (skipping hidden dirs, symlinks and the sibling
 // Android mount), bucket media by (folder, type), and return one group per
 // (folder, type) ordered by type then folder name, items ordered by name.
-QVector<GalleryGroup> MediaGalleryModel::scan(const QString &root)
+// Audio is the exception: all audio files collapse into ONE row (the gallery
+// shows library categories for it), with the folder split kept separately.
+GalleryScanResult MediaGalleryModel::scan(const QString &root)
 {
-    QVector<GalleryGroup> result;
+    GalleryScanResult out;
+    QVector<GalleryGroup> &result = out.rows;
     if (root.isEmpty() || !QFileInfo::exists(root))
-        return result;
+        return out;
 
     QMimeDatabase db;
     // folderPath -> per-type item lists [image, video, audio]
@@ -240,24 +268,54 @@ QVector<GalleryGroup> MediaGalleryModel::scan(const QString &root)
              < b.toMap().value("fileName").toString().toLower();
     };
 
+    QVariantList audioAll;
     for (auto it = byDir.begin(); it != byDir.end(); ++it) {
         const QString &path = it.key();
         QVector<QVariantList> &buckets = it.value();
         for (int t = 0; t < 4; ++t) {
             if (buckets[t].isEmpty())
                 continue;
+            std::sort(buckets[t].begin(), buckets[t].end(), byName);
+            QString folderName = QFileInfo(path).fileName();
+            if (folderName.isEmpty())
+                folderName = path;
+            if (t == 2) {
+                QVariantMap folder;
+                folder.insert("folderName", folderName);
+                folder.insert("folderPath", path);
+                folder.insert("items", buckets[t]);
+                out.audioFolders.append(folder);
+                audioAll += buckets[t];
+                continue;
+            }
             GalleryGroup g;
             g.type = t;
             g.typeKey = QString::fromLatin1(typeKey(t));
             g.folderPath = path;
-            g.folderName = QFileInfo(path).fileName();
-            if (g.folderName.isEmpty())
-                g.folderName = path;
-            std::sort(buckets[t].begin(), buckets[t].end(), byName);
+            g.folderName = folderName;
             g.items = buckets[t];
             result.append(g);
         }
     }
+
+    // Single audio row carrying every audio file of this storage; the gallery
+    // renders it as the songs/albums/artists/folders category block.
+    if (!audioAll.isEmpty()) {
+        GalleryGroup g;
+        g.type = 2;
+        g.typeKey = QString::fromLatin1(typeKey(2));
+        g.folderPath = root;
+        g.folderName = QFileInfo(root).fileName();
+        g.items = audioAll;
+        result.append(g);
+    }
+
+    std::sort(out.audioFolders.begin(), out.audioFolders.end(),
+              [](const QVariant &a, const QVariant &b) {
+                  return a.toMap().value("folderName").toString()
+                             .compare(b.toMap().value("folderName").toString(),
+                                      Qt::CaseInsensitive) < 0;
+              });
 
     // Order by type (images, videos, audio, playlists), then folder name.
     std::sort(result.begin(), result.end(),
@@ -266,5 +324,5 @@ QVector<GalleryGroup> MediaGalleryModel::scan(const QString &root)
                       return a.type < b.type;
                   return a.folderName.compare(b.folderName, Qt::CaseInsensitive) < 0;
               });
-    return result;
+    return out;
 }

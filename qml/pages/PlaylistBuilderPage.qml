@@ -140,8 +140,57 @@ Page {
                         rootPath: modelData.path
                     }
 
+                    // Audio folders live beside the model rows (the gallery
+                    // collapses audio into library categories), so the builder
+                    // sections come from audioFolders instead.
                     Repeater {
-                        model: rootModel
+                        model: page.mediaType === "audio" ? rootModel.audioFolders : []
+
+                        delegate: Column {
+                            width: column.width
+
+                            SectionHeader {
+                                text: modelData.folderName + " · " + storageLabel
+                            }
+
+                            Repeater {
+                                model: modelData.items
+                                delegate: BackgroundItem {
+                                    id: audioTrackRow
+                                    width: column.width
+                                    readonly property bool sel: page.isSelected(modelData.filePath)
+                                    highlighted: down || sel
+
+                                    Row {
+                                        x: Theme.horizontalPageMargin
+                                        width: parent.width - 2 * Theme.horizontalPageMargin
+                                        height: parent.height
+                                        spacing: Theme.paddingLarge
+
+                                        Image {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            source: "image://theme/"
+                                                    + (audioTrackRow.sel ? "icon-m-acknowledge?" + Theme.highlightColor
+                                                                         : "icon-m-add")
+                                        }
+                                        Label {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - Theme.iconSizeMedium - Theme.paddingLarge
+                                            truncationMode: TruncationMode.Fade
+                                            text: modelData.fileName
+                                            color: audioTrackRow.highlighted ? Theme.highlightColor
+                                                                             : Theme.primaryColor
+                                        }
+                                    }
+
+                                    onClicked: page.toggle(modelData.filePath)
+                                }
+                            }
+                        }
+                    }
+
+                    Repeater {
+                        model: page.mediaType === "video" ? rootModel : null
 
                         delegate: Column {
                             width: column.width

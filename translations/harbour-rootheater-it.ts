@@ -5,7 +5,7 @@
     <name>AboutPage</name>
     <message>
         <source>About RooTheater</source>
-        <translation>Informazioni su RooTheater</translation>
+        <translation>About RooTheater</translation>
     </message>
     <message>
         <source>A multimedia player for Sailfish OS</source>
@@ -58,6 +58,104 @@
     <message>
         <source>The full license texts are shipped in /usr/share/harbour-rootheater/licenses/.</source>
         <translation>I testi completi delle licenze sono inclusi in /usr/share/harbour-rootheater/licenses/.</translation>
+    </message>
+</context>
+<context>
+    <name>AppPermissionsPage</name>
+    <message>
+        <source>App permissions</source>
+        <translation>Permessi dell&apos;app</translation>
+    </message>
+    <message>
+        <source>Turn off the resources you don&apos;t want RooTheater to use. This only blocks the app internally — to fully revoke a system permission use the SailfishOS Settings.</source>
+        <translation>Disattiva le risorse che non vuoi che RooTheater usi. Questo blocca solo l&apos;app internamente — per revocare del tutto un permesso di sistema usa le Impostazioni di SailfishOS.</translation>
+    </message>
+    <message>
+        <source>Network</source>
+        <translation>Rete</translation>
+    </message>
+    <message>
+        <source>Safe to turn off: RooTheater keeps working fully offline with your local media.</source>
+        <translation>Sicuro da disattivare: RooTheater continua a funzionare completamente offline con i tuoi contenuti locali.</translation>
+    </message>
+    <message>
+        <source>Internet</source>
+        <translation>Internet</translation>
+    </message>
+    <message>
+        <source>YouTube (search, subscriptions, playback) and network streams. When off, those entries disappear from the Home page and the app makes no network connections.</source>
+        <translation>YouTube (ricerca, iscrizioni, riproduzione) e flussi di rete. Se disattivato, quelle voci scompaiono dalla Home e l&apos;app non effettua alcuna connessione di rete.</translation>
+    </message>
+    <message>
+        <source>Media library</source>
+        <translation>Libreria multimediale</translation>
+    </message>
+    <message>
+        <source>System media index</source>
+        <translation>Indice multimediale di sistema</translation>
+    </message>
+    <message>
+        <source>The All songs / Albums / Artists views read the system media index (Tracker), the same source the stock Media app uses. When off, the Audio section only offers folder browsing.</source>
+        <translation>Le viste Tutti i brani / Album / Artisti leggono l&apos;indice multimediale di sistema (Tracker), la stessa fonte usata dall&apos;app Media nativa. Se disattivato, la sezione Audio offre solo la navigazione per cartelle.</translation>
+    </message>
+    <message>
+        <source>Storages</source>
+        <translation>Memorie</translation>
+    </message>
+    <message>
+        <source>A storage turned off is hidden from the Home page and never scanned.</source>
+        <translation>Una memoria disattivata viene nascosta dalla Home e non viene mai scansionata.</translation>
+    </message>
+    <message>
+        <source>Android storage</source>
+        <translation>Memoria Android</translation>
+    </message>
+    <message>
+        <source>Media shared with Android App Support apps.</source>
+        <translation>Contenuti condivisi con le app di Android App Support.</translation>
+    </message>
+    <message>
+        <source>SD card</source>
+        <translation>Scheda SD</translation>
+    </message>
+    <message>
+        <source>Media on removable memory cards.</source>
+        <translation>Contenuti sulle schede di memoria rimovibili.</translation>
+    </message>
+    <message>
+        <source>System permissions</source>
+        <translation>Permessi di sistema</translation>
+    </message>
+    <message>
+        <source>Access to your files, audio playback and other low-level permissions are managed by SailfishOS. To revoke them, open the system Settings → Apps → RooTheater.</source>
+        <translation>L&apos;accesso ai tuoi file, la riproduzione audio e gli altri permessi di basso livello sono gestiti da SailfishOS. Per revocarli, apri Impostazioni di sistema → App → RooTheater.</translation>
+    </message>
+</context>
+<context>
+    <name>AudioFoldersPage</name>
+    <message>
+        <source>Folders</source>
+        <translation>Cartelle</translation>
+    </message>
+    <message>
+        <source>item</source>
+        <translation>elemento</translation>
+    </message>
+    <message>
+        <source>items</source>
+        <translation>elementi</translation>
+    </message>
+    <message>
+        <source>No media found</source>
+        <translation>Nessun media trovato</translation>
+    </message>
+    <message>
+        <source>Album cover</source>
+        <translation>Copertina album</translation>
+    </message>
+    <message>
+        <source>Play album</source>
+        <translation>Riproduci album</translation>
     </message>
 </context>
 <context>
@@ -240,14 +338,6 @@
         <translation>Crea playlist audio</translation>
     </message>
     <message>
-        <source>Album cover</source>
-        <translation>Copertina album</translation>
-    </message>
-    <message>
-        <source>Play album</source>
-        <translation>Riproduci album</translation>
-    </message>
-    <message>
         <source>Playlists</source>
         <translation>Playlist</translation>
     </message>
@@ -262,6 +352,54 @@
     <message>
         <source>Create video playlist</source>
         <translation>Crea playlist video</translation>
+    </message>
+    <message>
+        <source>All songs</source>
+        <translation>Tutti i brani</translation>
+    </message>
+    <message>
+        <source>song</source>
+        <translation>brano</translation>
+    </message>
+    <message>
+        <source>songs</source>
+        <translation>brani</translation>
+    </message>
+    <message>
+        <source>Albums</source>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>album</source>
+        <translation>album</translation>
+    </message>
+    <message>
+        <source>albums</source>
+        <translation>album</translation>
+    </message>
+    <message>
+        <source>Artists</source>
+        <translation>Artisti</translation>
+    </message>
+    <message>
+        <source>artist</source>
+        <translation>artista</translation>
+    </message>
+    <message>
+        <source>artists</source>
+        <translation>artisti</translation>
+    </message>
+    <message>
+        <source>Folders</source>
+        <translation>Cartelle</translation>
+    </message>
+    <message>
+        <source>folder</source>
+        <translation>cartella</translation>
+    </message>
+    <message>
+        <source>folders</source>
+        <translation>cartelle</translation>
     </message>
 </context>
 <context>
@@ -319,10 +457,6 @@
 </context>
 <context>
     <name>MainPage</name>
-    <message>
-        <source>About</source>
-        <translation>Informazioni</translation>
-    </message>
     <message>
         <source>Open network stream…</source>
         <translation>Apri stream di rete…</translation>
@@ -390,6 +524,210 @@
     <message>
         <source>Deleting channel</source>
         <translation>Eliminazione canale</translation>
+    </message>
+    <message>
+        <source>Options</source>
+        <translation>Opzioni</translation>
+    </message>
+</context>
+<context>
+    <name>MusicAlbumsPage</name>
+    <message>
+        <source>Unknown artist</source>
+        <translation>Artista sconosciuto</translation>
+    </message>
+    <message>
+        <source>Unknown album</source>
+        <translation>Album sconosciuto</translation>
+    </message>
+    <message>
+        <source>Multiple artists</source>
+        <translation>Artisti vari</translation>
+    </message>
+    <message>
+        <source>Albums</source>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Sorting</source>
+        <translation>Ordinamento</translation>
+    </message>
+    <message>
+        <source>song</source>
+        <translation>brano</translation>
+    </message>
+    <message>
+        <source>songs</source>
+        <translation>brani</translation>
+    </message>
+    <message>
+        <source>No albums</source>
+        <translation>Nessun album</translation>
+    </message>
+    <message>
+        <source>Music indexed by the system appears here</source>
+        <translation>Qui appare la musica indicizzata dal sistema</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Ordina per</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Artist</source>
+        <translation>Artista</translation>
+    </message>
+    <message>
+        <source>Order</source>
+        <translation>Ordine</translation>
+    </message>
+    <message>
+        <source>Ascending</source>
+        <translation>Crescente</translation>
+    </message>
+    <message>
+        <source>Descending</source>
+        <translation>Decrescente</translation>
+    </message>
+</context>
+<context>
+    <name>MusicArtistsPage</name>
+    <message>
+        <source>Unknown artist</source>
+        <translation>Artista sconosciuto</translation>
+    </message>
+    <message>
+        <source>Artists</source>
+        <translation>Artisti</translation>
+    </message>
+    <message>
+        <source>Sorting</source>
+        <translation>Ordinamento</translation>
+    </message>
+    <message>
+        <source>song</source>
+        <translation>brano</translation>
+    </message>
+    <message>
+        <source>songs</source>
+        <translation>brani</translation>
+    </message>
+    <message>
+        <source>No artists</source>
+        <translation>Nessun artista</translation>
+    </message>
+    <message>
+        <source>Music indexed by the system appears here</source>
+        <translation>Qui appare la musica indicizzata dal sistema</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Ordina per</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>Nome</translation>
+    </message>
+    <message>
+        <source>Songs</source>
+        <translation>Brani</translation>
+    </message>
+    <message>
+        <source>Order</source>
+        <translation>Ordine</translation>
+    </message>
+    <message>
+        <source>Ascending</source>
+        <translation>Crescente</translation>
+    </message>
+    <message>
+        <source>Descending</source>
+        <translation>Decrescente</translation>
+    </message>
+</context>
+<context>
+    <name>MusicSongsPage</name>
+    <message>
+        <source>Unknown artist</source>
+        <translation>Artista sconosciuto</translation>
+    </message>
+    <message>
+        <source>Unknown album</source>
+        <translation>Album sconosciuto</translation>
+    </message>
+    <message>
+        <source>Sorting</source>
+        <translation>Ordinamento</translation>
+    </message>
+    <message>
+        <source>Play all</source>
+        <translation>Riproduci tutto</translation>
+    </message>
+    <message>
+        <source>No songs</source>
+        <translation>Nessun brano</translation>
+    </message>
+    <message>
+        <source>Music indexed by the system appears here</source>
+        <translation>Qui appare la musica indicizzata dal sistema</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Ordina per</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <translation>Titolo</translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <translation>Traccia</translation>
+    </message>
+    <message>
+        <source>Artist</source>
+        <translation>Artista</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <translation>Album</translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation>Data</translation>
+    </message>
+    <message>
+        <source>Order</source>
+        <translation>Ordine</translation>
+    </message>
+    <message>
+        <source>Ascending</source>
+        <translation>Crescente</translation>
+    </message>
+    <message>
+        <source>Descending</source>
+        <translation>Decrescente</translation>
+    </message>
+</context>
+<context>
+    <name>OptionsPage</name>
+    <message>
+        <source>Options</source>
+        <translation>Opzioni</translation>
+    </message>
+    <message>
+        <source>Permissions</source>
+        <translation>Permessi</translation>
+    </message>
+    <message>
+        <source>Choose which resources RooTheater may use</source>
+        <translation>Scegli quali risorse RooTheater può usare</translation>
+    </message>
+    <message>
+        <source>Version, license and credits</source>
+        <translation>Versione, licenza e crediti</translation>
     </message>
 </context>
 <context>

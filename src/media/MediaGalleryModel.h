@@ -40,6 +40,16 @@ struct GalleryGroup
     QVariantList items;    // [{ filePath, fileName, mimeType }, …] (this type only)
 };
 
+// Scan output: the model rows plus the per-folder audio groups. Audio is
+// collapsed into a single row (the gallery shows Tracker-backed categories —
+// songs/albums/artists — instead of folders), while the folder breakdown is
+// kept aside for the "Folders" fallback view.
+struct GalleryScanResult
+{
+    QVector<GalleryGroup> rows;
+    QVariantList audioFolders;   // [{ folderName, folderPath, items }, …]
+};
+
 // MediaGalleryModel scans a storage root (set via rootPath) for image/video/audio
 // files and groups them by folder AND type. The scan runs on a worker thread;
 // hidden dirs and the sibling Android mount are skipped.
@@ -49,6 +59,7 @@ class MediaGalleryModel : public QAbstractListModel
     Q_PROPERTY(QString rootPath READ rootPath WRITE setRootPath NOTIFY rootPathChanged)
     Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    Q_PROPERTY(QVariantList audioFolders READ audioFolders NOTIFY audioFoldersChanged)
 public:
     enum Roles {
         TypeKeyRole = Qt::UserRole + 1,
@@ -69,6 +80,7 @@ public:
     void setRootPath(const QString &path);
     bool scanning() const { return m_scanning; }
     int count() const { return m_groups.size(); }
+    QVariantList audioFolders() const { return m_audioFolders; }
 
     // Drop files (by absolute path) from the cached groups so the gallery stays
     // in sync after a delete inside a folder, without a full re-scan. Groups left
@@ -83,17 +95,19 @@ signals:
     void rootPathChanged();
     void scanningChanged();
     void countChanged();
+    void audioFoldersChanged();
 
 private slots:
     void onScanFinished();
 
 private:
-    static QVector<GalleryGroup> scan(const QString &root);
+    static GalleryScanResult scan(const QString &root);
 
     QString m_rootPath;
     bool m_scanning = false;
     QVector<GalleryGroup> m_groups;
-    QFutureWatcher<QVector<GalleryGroup>> m_watcher;
+    QVariantList m_audioFolders;
+    QFutureWatcher<GalleryScanResult> m_watcher;
 };
 
 #endif // MEDIAGALLERYMODEL_H
