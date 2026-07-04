@@ -85,3 +85,16 @@ below, reproducible with the build recipe shipped in `scripts/build-ffmpeg.sh` a
 - Role: application framework and UI toolkit
 - License: LGPL-2.1-or-later (Qt 5) / proprietary (Sailfish Silica)
 - Distribution: system libraries provided by the platform; not bundled
+
+**Grilo** and **Tracker 3** (music library metadata)
+- Role: the Audio library (All songs / Albums / Artists) reads track metadata
+  from the system media index through the `grl-tracker3` Grilo source and
+  SPARQL queries over the public Tracker 3 audio ontology — the same index the
+  stock Media app uses
+- License: LGPL-2.1-or-later (Grilo, grilo-plugins, libtracker-sparql) /
+  GPL-2.0-or-later (the Tracker 3 indexer daemon)
+- Distribution: system libraries and QML plugin provided by the platform
+  (`grilo-qt5-qml-plugin`, `grilo-plugin-tracker`); linked/loaded at runtime,
+  **not** bundled in the RPM
+- Source: https://gitlab.gnome.org/GNOME/grilo and
+  https://gitlab.gnome.org/GNOME/tracker
