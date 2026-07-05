@@ -98,6 +98,12 @@ export CC=gcc CXX=g++ AR=ar RANLIB=ranlib LD=ld STRIP=strip NM=nm
 # Nel sb2 `gcc` è il cross (aarch64); `host-gcc` (i486-meego) è il compilatore
 # 'tools' eseguibile nell'ambiente di build → è il nostro compilatore nativo.
 export BUILDCC=host-gcc
+# Privacy: -ffile-prefix-map riscrive i path assoluti della macchina di build in
+# relativi, così i .so non incorporano /home/<user>/... . Colpisce i __FILE__ degli
+# assert VLC (finiscono in .rodata e sono visibili con \`strings\`). Copre sia
+# l'albero sorgente che la build dir.
+export CFLAGS=\"-ffile-prefix-map=$SRC=. -ffile-prefix-map=$B/build-$ARCH=. \${CFLAGS:-}\"
+export CXXFLAGS=\"\$CFLAGS\"
 # PKG_CONFIG_PATH (additivo) per trovare il NOSTRO ffmpeg contrib SENZA perdere
 # il path di sistema del sb2 (dove sta libpulse ecc.). NB: usare LIBDIR lo
 # sostituirebbe, nascondendo le lib del target.
@@ -182,10 +188,30 @@ vendor() {
         mkdir -p "$PROJ/vlc/include"
         cp -a "$STAGE/usr/include/vlc" "$PROJ/vlc/include/"
     fi
+    # Privacy: rimuovi l'RPATH che libtool cabla verso la build dir. Resta come
+    # stringa in .dynstr (leak del path /home/<user>/...) anche dopo lo strip.
+    # --set-rpath '' RISCRIVE .dynstr (a differenza di --remove-rpath, che lascia
+    # la stringa orfana). patchelf è un tool host (pip wheel: ~/.local/bin).
+    local PATCHELF; PATCHELF="$(command -v patchelf || echo "$HOME/.local/bin/patchelf")"
+    find "$DST/lib" -type f -name '*.so*' -exec "$PATCHELF" --set-rpath '' {} \; 2>/dev/null || true
     # Strip dei simboli di debug (eu-strip: arch-agnostico, host). Senza, i 4
     # plugin ffmpeg-based pesano 78-100MB L'UNO e il bundle installato supera i
     # 400MB su / del device (~70MB da strippato). Solo file reali, non i symlink.
     find "$DST/lib" -type f -name '*.so*' -exec eu-strip {} \; 2>/dev/null || true
+    # Privacy: scrub del path di build che resta nelle stringhe di configure-line
+    # (ffmpeg av_configuration() nei plugin av*, VLC CONFIGURE_LINE in libvlccore) —
+    # non le tocca né prefix-map né strip. Sostituzione a LUNGHEZZA COSTANTE (non
+    # sposta gli offset ELF) di $PROJ con un placeholder: sicuro, sono stringhe
+    # solo diagnostiche (vlc --version / av diag), nessun uso funzionale a runtime.
+    python3 - "$DST" "$PROJ" <<'PY' || true
+import sys,glob,os
+dst,proj=sys.argv[1],sys.argv[2].encode()
+repl=b'/rootheater-build'.ljust(len(proj),b'_')[:len(proj)]
+for f in glob.glob(dst+'/lib/**/*.so*',recursive=True):
+    if os.path.islink(f): continue
+    b=open(f,'rb').read()
+    if proj in b: open(f,'wb').write(b.replace(proj,repl))
+PY
     echo "=== vendored -> vlc/$ARCH ==="
     ls -lh "$DST/lib/"libvlc*.so* 2>/dev/null
     echo "plugin: $(find "$DST/lib/vlc/plugins" -name '*.so' 2>/dev/null | wc -l)"
