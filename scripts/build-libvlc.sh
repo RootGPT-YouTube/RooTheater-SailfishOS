@@ -182,6 +182,10 @@ vendor() {
         mkdir -p "$PROJ/vlc/include"
         cp -a "$STAGE/usr/include/vlc" "$PROJ/vlc/include/"
     fi
+    # Strip dei simboli di debug (eu-strip: arch-agnostico, host). Senza, i 4
+    # plugin ffmpeg-based pesano 78-100MB L'UNO e il bundle installato supera i
+    # 400MB su / del device (~70MB da strippato). Solo file reali, non i symlink.
+    find "$DST/lib" -type f -name '*.so*' -exec eu-strip {} \; 2>/dev/null || true
     echo "=== vendored -> vlc/$ARCH ==="
     ls -lh "$DST/lib/"libvlc*.so* 2>/dev/null
     echo "plugin: $(find "$DST/lib/vlc/plugins" -name '*.so' 2>/dev/null | wc -l)"
