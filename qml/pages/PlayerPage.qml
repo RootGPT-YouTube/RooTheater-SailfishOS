@@ -1,6 +1,7 @@
 import QtQuick 2.0
 import Sailfish.Silica 1.0
 import QtMultimedia 5.6
+import Nemo.KeepAlive 1.2
 import RooTheater.Media 1.0
 
 Page {
@@ -114,9 +115,10 @@ Page {
         seekTo(Math.max(0, Math.min(durationMs, positionMs + deltaMs)))
     }
 
-    // ── App cover (audio/video): title from metadata, fallback to file name ──
-    // Tracker metadata (queueMeta) wins, then the file's own tags (TagReader).
-    function coverDisplayTitle() {
+    // ── Track metadata for display (player page + app cover) ─────────────────
+    // Tracker metadata (queueMeta) wins, then the file's own tags (TagReader),
+    // then the bare file name.
+    function displayTitle() {
         var m = metaFor()
         if (m && m.title && m.title !== "")
             return m.title
@@ -127,18 +129,28 @@ Page {
         var dot = n.lastIndexOf('.')
         return dot > 0 ? n.substring(0, dot) : n
     }
-    // Subtitle: album/playlist name when known, else just the media kind.
-    function coverDisplaySubtitle() {
+    function displayArtist() {
+        var m = metaFor()
+        if (m && m.artist && m.artist !== "")
+            return m.artist
+        return coverTag.artist ? coverTag.artist : ""
+    }
+    function displayAlbum() {
         var m = metaFor()
         if (m && m.album && m.album !== "")
             return m.album
-        if (coverTag.album && coverTag.album !== "")
-            return coverTag.album
+        return coverTag.album ? coverTag.album : ""
+    }
+    // Cover subtitle: album name when known, else just the media kind.
+    function coverDisplaySubtitle() {
+        var album = displayAlbum()
+        if (album !== "")
+            return album
         return engine.hasVideo ? qsTr("Video") : qsTr("Audio")
     }
     function pushCover() {
         coverState.mode = "media"
-        coverState.title = coverDisplayTitle()
+        coverState.title = displayTitle()
         coverState.subtitle = coverDisplaySubtitle()
         coverState.coverArt = page.playlistCover !== ""
             ? page.playlistCover
@@ -151,7 +163,7 @@ Page {
     Connections {
         target: coverTag
         onTagsChanged: if (coverState.mode === "media") {
-            coverState.title = page.coverDisplayTitle()
+            coverState.title = page.displayTitle()
             coverState.subtitle = page.coverDisplaySubtitle()
         }
     }
@@ -164,10 +176,23 @@ Page {
     onIsPlayingChanged: if (coverState.mode === "media") coverState.playing = page.isPlaying
     onSourceChanged: pushCover()
 
+    // Keep the display on while a VIDEO is actually playing; audio-only playback
+    // lets the screen blank normally (like the stock Media app). Gated on app
+    // focus so a video kept playing while minimized doesn't hold the screen on.
+    DisplayBlanking {
+        preventBlanking: page.isPlaying && engine.valid && engine.hasVideo
+                         && Qt.application.active
+    }
+
     // Resolve the backend to actually use: the manual override if set, else the
     // engine's auto pick. Forcing HW falls back to the QtMultimedia baseline when
     // the direct droid path is disabled.
     function targetBackend() {
+        // The manual override is a video-only control (the selector is hidden on
+        // audio): never let one set on a video track leak onto audio tracks
+        // queued after it — audio always plays on the engine's auto pick.
+        if (!engine.hasVideo)
+            return page.recommendedBackendStr
         if (page.decodeOverride === "hw")
             return page.droidEnabled ? "droid" : "qt"
         if (page.decodeOverride === "sw")
@@ -373,27 +398,67 @@ Page {
         }
     }   // PinchZoom
 
-    // Audio-only media: show the embedded cover art, or a ♪ placeholder when the
-    // file has none. (The cover is served in-memory via the rtcover provider.)
+    // Audio-only media: the embedded cover art (or a ♪ placeholder when the file
+    // has none) with the track's title / artist / album underneath — same data
+    // that feeds the app cover, so what the cover shows the player shows too.
     Item {
         anchors.fill: parent
         visible: engine.valid && !engine.hasVideo
-        Image {
+
+        Column {
             anchors.centerIn: parent
-            width: Math.min(parent.width, parent.height) * 0.72
-            height: width
-            fillMode: Image.PreserveAspectFit
-            source: engine.coverSource
-            visible: engine.hasCover
-            cache: false
-            asynchronous: true
-        }
-        Label {
-            anchors.centerIn: parent
-            visible: !engine.hasCover
-            text: "♪"
-            color: Theme.secondaryColor
-            font.pixelSize: Math.min(parent.width, parent.height) * 0.4
+            width: parent.width - 2 * Theme.horizontalPageMargin
+            spacing: Theme.paddingLarge
+
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(page.width, page.height) * 0.6
+                height: width
+                Image {
+                    anchors.fill: parent
+                    fillMode: Image.PreserveAspectFit
+                    source: engine.coverSource
+                    visible: engine.hasCover
+                    cache: false
+                    asynchronous: true
+                }
+                Label {
+                    anchors.centerIn: parent
+                    visible: !engine.hasCover
+                    text: "♪"
+                    color: Theme.secondaryColor
+                    font.pixelSize: parent.width * 0.55
+                }
+            }
+
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                color: Theme.highlightColor
+                font.pixelSize: Theme.fontSizeLarge
+                text: page.displayTitle()
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                truncationMode: TruncationMode.Fade
+                color: Theme.primaryColor
+                font.pixelSize: Theme.fontSizeMedium
+                visible: text !== ""
+                text: page.displayArtist()
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                truncationMode: TruncationMode.Fade
+                color: Theme.secondaryColor
+                font.pixelSize: Theme.fontSizeSmall
+                visible: text !== ""
+                text: page.displayAlbum()
+            }
         }
     }
 
@@ -555,9 +620,12 @@ Page {
             // Manual decode-mode selector (additive; default = Automatic). Picking a
             // mode reloads the current source on that backend. Not persistent: resets
             // to Automatic when the video is closed, kept across loops/tracks.
+            // VIDEO ONLY: for audio the alternatives can only make things worse
+            // (HW mostly "unsupported", libVLC sometimes choppy) while the engine's
+            // auto pick just works — so the selector is hidden there entirely.
             ComboBox {
                 width: parent.width
-                visible: engine.valid
+                visible: engine.valid && engine.hasVideo
                 label: qsTr("Decoding")
                 currentIndex: 0   // 0 = Automatic, 1 = Hardware, 2 = Software
                 menu: ContextMenu {

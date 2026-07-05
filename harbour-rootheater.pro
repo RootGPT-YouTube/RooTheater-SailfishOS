@@ -15,10 +15,10 @@ TARGET = harbour-rootheater
 # and on the app template truncates it to major.minor when expanded.
 # Displayed in-app (AboutPage) via APP_VERSION. RPM Version stays numeric (0.9.0
 # in the spec/yaml) since RPM forbids '-'; the "-beta" label lives in APP_VERSION.
-RT_APP_VERSION = 0.9.5-beta
+RT_APP_VERSION = 0.9.6-beta
 # VERSION must be a clean numeric for qmake (it's reserved / gets parsed); keep it
 # separate from RT_APP_VERSION so the "-beta" suffix doesn't reach it.
-VERSION = 0.9.5
+VERSION = 0.9.6
 
 CONFIG += sailfishapp sailfishapp_i18n c++17
 

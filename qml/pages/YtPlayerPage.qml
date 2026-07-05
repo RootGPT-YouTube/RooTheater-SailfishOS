@@ -2,6 +2,7 @@ import QtQuick 2.0
 import Sailfish.Silica 1.0
 import Sailfish.WebView 1.0
 import Sailfish.WebEngine 1.0
+import Nemo.KeepAlive 1.2
 
 // In-app YouTube playback: the official m.youtube.com watch page in the
 // Sailfish WebView (same Gecko engine as the system browser, so same legal,
@@ -128,6 +129,15 @@ Page {
         // real dimensions are known (and handles ad→content aspect switches).
         "setInterval(function(){var fe=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;if(fe)report();},600);" +
         "})()"
+
+    // Keep the display on while watching. The video plays inside the WebView, so
+    // there is no play/pause state on the QML side to gate on — instead prevent
+    // blanking for as long as the watch page is up, this page is on top and the
+    // app is focused (backgrounding or navigating away re-enables normal blanking).
+    DisplayBlanking {
+        preventBlanking: page.ready && page.status === PageStatus.Active
+                         && Qt.application.active
+    }
 
     Component.onCompleted: {
         // Browser-parity prefs the bare WebView misses (sailfish-browser data/prefs.js).
