@@ -23,6 +23,7 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QXmlStreamReader>
+#include <QTimer>
 #include <algorithm>
 
 YtFeed::YtFeed(QObject *parent)
@@ -80,6 +81,7 @@ void YtFeed::loadChannels(const QStringList &channelIds)
     emit countChanged();
 
     m_pending = 0;
+    m_retries.clear();
     QStringList ids;
     for (const QString &id : channelIds)
         if (!id.isEmpty())
@@ -101,22 +103,56 @@ void YtFeed::startNext(int gen)
     // Cap concurrent RSS fetches: firing dozens of parallel TLS requests at once
     // spikes memory/fds and can crash the app on a constrained device.
     const int kMax = 6;
+    // A stalled mobile connection can hang forever; a transient error (TLS reset,
+    // DNS blip, YouTube rate-limit) would otherwise drop a channel silently. Guard
+    // both with a per-request timeout and a couple of re-queued retries so "reload"
+    // (and the initial load) actually recover instead of showing partial results.
+    const int kTimeoutMs  = 12000;
+    const int kRetryMax   = 2;
+    const int kRetryDelay = 1000;
+
     while (m_active < kMax && !m_idQueue.isEmpty()) {
         const QString id = m_idQueue.takeFirst();
         ++m_active;
         QUrl url(QStringLiteral("https://www.youtube.com/feeds/videos.xml?channel_id=") + id);
         QNetworkRequest req(url);
         req.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
+        // A benign UA reduces the chance of being bot-filtered / rate-limited.
+        req.setHeader(QNetworkRequest::UserAgentHeader,
+                      QStringLiteral("Mozilla/5.0 (RooTheater)"));
         QNetworkReply *reply = m_nam->get(req);
-        connect(reply, &QNetworkReply::finished, this, [this, reply, gen]() {
+
+        // Qt 5.6 has no QNetworkRequest::setTransferTimeout, so bound the request
+        // with a single-shot timer that aborts a stalled reply (→ finished w/ error).
+        QTimer *timer = new QTimer(reply);
+        timer->setSingleShot(true);
+        connect(timer, &QTimer::timeout, reply, &QNetworkReply::abort);
+        timer->start(kTimeoutMs);
+
+        connect(reply, &QNetworkReply::finished, this,
+                [this, reply, timer, id, gen, kRetryMax, kRetryDelay]() {
+            timer->stop();
             reply->deleteLater();
-            --m_active;
             if (gen != m_generation)
-                return;         // superseded by a newer loadChannels()
-            if (reply->error() == QNetworkReply::NoError)
+                return;         // superseded — leave the newer load's counters alone
+            --m_active;
+            if (reply->error() == QNetworkReply::NoError) {
                 parseFeed(reply->readAll());
-            finishOne();
-            startNext(gen);     // pull the next queued channel
+                finishOne();
+            } else if (m_retries.value(id) < kRetryMax) {
+                // Transient failure: re-queue this channel after a short backoff
+                // instead of counting it done and losing it.
+                m_retries[id] += 1;
+                QTimer::singleShot(kRetryDelay, this, [this, id, gen]() {
+                    if (gen != m_generation)
+                        return;
+                    m_idQueue << id;
+                    startNext(gen);
+                });
+            } else {
+                finishOne();    // give up on this channel after the retries
+            }
+            startNext(gen);     // fill the freed slot with the next queued channel
         });
     }
 }

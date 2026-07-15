@@ -24,6 +24,7 @@
 #include <QVector>
 #include <QStringList>
 #include <QDateTime>
+#include <QHash>
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -89,6 +90,7 @@ private:
     int m_generation = 0;       // bumped on each loadChannels → drop stale replies
     QStringList m_idQueue;      // channel ids still to fetch
     int m_active = 0;           // in-flight requests (bounded, see startNext)
+    QHash<QString, int> m_retries;  // per-channel retry count (transient failures)
 };
 
 #endif // YTFEED_H
