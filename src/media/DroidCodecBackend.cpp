@@ -224,12 +224,13 @@ void DroidCodecBackend::play(const QString &url)
 {
     stop();
     m_url = url;
+    m_gen.fetch_add(1);    // stale state updates from the torn-down pipeline now drop
     m_stop = false;
     m_paused = false;
     m_firstPtsUs = -1;
     m_loopOffsetUs.store(0);
     { std::lock_guard<std::mutex> lk(m_clockMutex); m_clockValid = false; m_clockFrozen = false; }
-    emit postState(Opening);
+    emitState(Opening);
     m_presentThread = std::thread([this]() { presentLoop(); });
     m_videoFeedThread = std::thread([this]() { videoFeedLoop(); });
     m_demuxThread = std::thread([this]() { demuxLoop(); });
@@ -240,7 +241,7 @@ void DroidCodecBackend::pause()
     if (m_state == Playing) {
         m_paused = true;
         freezeClock(true);   // stop the master clock so it doesn't run away while paused
-        emit postState(Paused);
+        emitState(Paused);
     }
 }
 
@@ -253,7 +254,7 @@ void DroidCodecBackend::togglePause()
         // Re-anchor the clock so we don't fast-forward to catch up.
         m_firstPtsUs = -1;
         freezeClock(false);   // resume the master clock from where it paused
-        emit postState(Playing);
+        emitState(Playing);
     }
 }
 
@@ -289,6 +290,9 @@ void DroidCodecBackend::stop()
     if (m_sink)
         m_sink->reset();
     teardown();
+    // Close this generation only now: teardown() is what makes the codec fire its EOS
+    // callback, and that Ended must still carry the OLD generation so it is dropped.
+    m_gen.fetch_add(1);
     if (m_state != Stopped) {
         m_state = Stopped;
         emit stateChanged();
@@ -500,10 +504,10 @@ bool DroidCodecBackend::openAudio()
 void DroidCodecBackend::demuxLoop()
 {
     if (!DroidCodec::initialize() || !openInput(m_url)) {
-        emit postState(Error);
+        emitState(Error);
         return;
     }
-    emit postState(Playing);
+    emitState(Playing);
 
     AVStream *st = m_fmt->streams[m_videoStream];
     AVPacket *pkt = av_packet_alloc();
@@ -643,7 +647,7 @@ void DroidCodecBackend::videoFeedLoop()
 
         if (!vp.data) {                       // EOF marker: signal end-of-stream
             droid_media_codec_drain(m_codec);
-            emit postState(Ended);
+            emitState(Ended);
             continue;
         }
 
@@ -772,7 +776,7 @@ done:
 
 void DroidCodecBackend::eosCb(void *data)
 {
-    emit static_cast<DroidCodecBackend *>(data)->postState(Ended);
+    static_cast<DroidCodecBackend *>(data)->emitState(Ended);
 }
 
 void DroidCodecBackend::errorCb(void *data, int err)
@@ -780,7 +784,7 @@ void DroidCodecBackend::errorCb(void *data, int err)
     qWarning("DroidCodec: codec error callback err=%d", err);
     auto *self = static_cast<DroidCodecBackend *>(data);
     self->m_errorKind = ErrDecode;   // a runtime fault inside the HW decoder
-    emit self->postState(Error);
+    self->emitState(Error);
 }
 
 int DroidCodecBackend::sizeChangedCb(void *, int32_t, int32_t)
@@ -945,8 +949,17 @@ void DroidCodecBackend::paceAndPresent(_DroidMediaBuffer *buffer, qint64 vptsUs)
 
 // ── GUI-thread state updates ─────────────────────────────────────────────────
 
-void DroidCodecBackend::onPostState(int s)
+void DroidCodecBackend::emitState(int s)
 {
+    emit postState(s, m_gen.load());
+}
+
+void DroidCodecBackend::onPostState(int s, int gen)
+{
+    // Emitted by a pipeline that has since been torn down (stop/seek/track change):
+    // its state no longer describes what is playing, so drop it.
+    if (gen != m_gen.load())
+        return;
     if (m_state == s)
         return;
     m_state = static_cast<State>(s);

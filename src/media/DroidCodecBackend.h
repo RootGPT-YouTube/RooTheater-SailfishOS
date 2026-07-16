@@ -116,13 +116,14 @@ signals:
     void seekableChanged();
     void loopChanged();
     void frameReady(const QImage &frame);
-    // internal: marshal state/position/duration updates from worker → GUI thread
-    void postState(int s);
+    // internal: marshal state/position/duration updates from worker → GUI thread.
+    // postState carries the generation of the pipeline that emitted it (see m_gen).
+    void postState(int s, int gen);
     void postPosition(qlonglong ms);
     void postDuration(qlonglong ms);
 
 private slots:
-    void onPostState(int s);
+    void onPostState(int s, int gen);
     void onPostPosition(qlonglong ms);
     void onPostDuration(qlonglong ms);
 
@@ -143,6 +144,7 @@ private:
     bool openInput(const QString &url);
     bool openAudio();                 // best-effort; video plays even if this fails
     void teardown();
+    void emitState(int s);            // postState stamped with the current generation
 
     VideoSurface *m_output = nullptr;
     DroidVideoSink *m_sink = nullptr;
@@ -228,6 +230,13 @@ private:
 
     // worker + pacing
     std::thread m_demuxThread;
+    // Pipeline generation, bumped by every play() (a seek is a restart, so it bumps
+    // too). State updates are queued to the GUI thread, so one emitted by the pipeline
+    // being torn down can land AFTER its successor is already running — an Ended from
+    // the codec's EOS callback during teardown() then looked like the file had really
+    // finished and auto-advanced the queue to the next track. onPostState drops any
+    // update whose generation is no longer current.
+    std::atomic<int> m_gen{0};
     std::atomic<bool> m_stop{false};
     std::atomic<bool> m_paused{false};
     QElapsedTimer m_clock;            // wall clock since first frame (no-audio fallback)
