@@ -75,6 +75,10 @@ Page {
     //  • orientation poller: the real dimensions usually arrive AFTER we're already
     //    fullscreen, so a 600ms poll re-reports until then and flips the page to
     //    landscape the moment they're known.
+    //  • quality cap: pins the best level up to 1080p instead of letting YouTube's
+    //    ABR drift with the bandwidth (see the block below for why it retries).
+    // Background playback (cover / blank screen) is not handled here but by the
+    // `active` override on the WebView below.
     readonly property string watchInitJs:
         "(function(){if(window.__rtInit)return;window.__rtInit=1;" +
         // orientation reporter (portrait-safe: landscape only when proven wider)
@@ -104,9 +108,30 @@ Page {
         "[300,1000,2500,4500].forEach(function(d){setTimeout(ccOff,d);});return;}" +
         "var v=document.querySelector('video');if(v){try{v.play();}catch(x){}}" +
         "},true);});" +
+        // Quality cap: YouTube's ABR otherwise picks by bandwidth and player
+        // viewport and drifts around (360p on a slow moment, and it rarely climbs
+        // back). We pin the best level up to 1080p, stepping down the ladder to
+        // whatever this video actually offers. setPlaybackQualityRange is the
+        // sticky one (ABR does not immediately override it); setPlaybackQuality is
+        // fired too since older player builds only honour that. The level list is
+        // empty until the player has media attached, so we retry until it answers,
+        // and re-apply on every "playing" (an ad and the content that follows are
+        // separate media with separate ladders).
+        "var RTQ=['hd1080','hd720','large','medium','small','tiny'];" +
+        "window.__rtQAvail='';window.__rtQSet='';" +
+        "function setQ(){var p=document.getElementById('movie_player');" +
+        "if(!p||typeof p.getAvailableQualityLevels!=='function')return false;" +
+        "var av=[];try{av=p.getAvailableQualityLevels()||[];}catch(e){return false;}" +
+        "if(!av.length)return false;window.__rtQAvail=av.join(',');" +
+        "for(var i=0;i<RTQ.length;i++){if(av.indexOf(RTQ[i])<0)continue;" +
+        "try{p.setPlaybackQualityRange(RTQ[i],RTQ[i]);}catch(e){}" +
+        "try{p.setPlaybackQuality(RTQ[i]);}catch(e){}" +
+        "window.__rtQSet=RTQ[i];return true;}return false;}" +
+        "var qn=0;var qk=setInterval(function(){qn++;if(setQ()||qn>60)clearInterval(qk);},500);" +
         // re-report when real dimensions arrive (metadata / resize / playback)
         "function hookV(v){if(!v||v.__rtV)return;v.__rtV=1;" +
-        "['loadedmetadata','resize','playing'].forEach(function(e){v.addEventListener(e,report);});}" +
+        "['loadedmetadata','resize','playing'].forEach(function(e){v.addEventListener(e,report);});" +
+        "v.addEventListener('playing',function(){setTimeout(setQ,600);});}" +
         // Enter fullscreen via requestFullscreen (a direct API call — works
         // programmatically; a synthetic .click() on YouTube's button is ignored as
         // untrusted). Target YouTube's MOBILE player container #player-container-id
@@ -158,6 +183,14 @@ Page {
         anchors.fill: parent
         httpUserAgent: page.youtubeUa
         url: page.embedUrl                 // consent bootstrap (hidden)
+        // Background playback. Sailfish.WebView binds `active` to
+        // `Qt.application.state === Qt.ApplicationActive` (see its WebView.qml), so
+        // minimising to the cover or blanking the display suspends the view and the
+        // video stops — the one thing the system browser did better. `active` is a
+        // writable QuickMozView property and that binding is the only one touching
+        // it, so overriding it here is enough. Tied to the page rather than
+        // hardcoded true, so leaving the player still suspends Gecko.
+        active: page.status !== PageStatus.Inactive
         // Keep it rendering (so it loads) but invisible until the watch page is up
         // (so the embed's error-153 page is never seen). The watch page itself is
         // fine to show — it auto-goes fullscreen, and the plain page when not.
@@ -194,6 +227,28 @@ Page {
                 page.fsMode = 2
         }
         Timer { id: gotoWatch; interval: 400; onTriggered: web.url = page.watchUrl }
+
+        // Quality diagnostic: reports what YouTube actually offered for this video
+        // and which level the cap settled on, into the app journal
+        // (`sudo journalctl -b | grep "YT quality"`). Stops as soon as a level is
+        // pinned; the level list is only populated once media is attached, which on
+        // the mobile watch page is after the first tap.
+        Timer {
+            id: qualityProbe
+            running: page.ready
+            interval: 2000
+            repeat: true
+            onTriggered: web.runJavaScript(
+                "[window.__rtQAvail||'',window.__rtQSet||''].join('|')",
+                function (r) {
+                    if (!r || r === "|")
+                        return
+                    console.log("[RooTheater] YT quality: available=" + r.split("|")[0]
+                                + " picked=" + r.split("|")[1])
+                    if (r.split("|")[1] !== "")
+                        qualityProbe.running = false
+                })
+        }
 
         PullDownMenu {
             MenuItem {

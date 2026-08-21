@@ -145,6 +145,9 @@ private:
     bool openAudio();                 // best-effort; video plays even if this fails
     void teardown();
     void emitState(int s);            // postState stamped with the current generation
+    // End-of-stream gate: block (on the video-feed thread) until playback has
+    // really finished, so Ended is not emitted while the tail is still playing.
+    void waitForPlaybackEnd();
 
     VideoSurface *m_output = nullptr;
     DroidVideoSink *m_sink = nullptr;
@@ -244,11 +247,25 @@ private:
     qint64 m_lastPosEmitMs = -1;      // last UI position emit (throttle to ~5 Hz)
     QString m_url;
     qint64 m_startMs = 0;             // seek target applied by openInput on restart
+    // True only while seek() is restarting the pipeline: stop() then leaves the
+    // current frame on screen instead of blanking (GUI thread only).
+    bool m_seeking = false;
     // Loop: when the demux hits EOF it seeks back to 0 and keeps feeding the SAME
     // decoder (no teardown), adding a growing offset to every fed timestamp so the
     // A/V clock stays monotonic across loops. Position display subtracts it.
     std::atomic<bool> m_loop{false};
     std::atomic<qint64> m_loopOffsetUs{0};
+
+    // ── end-of-stream bookkeeping (see waitForPlaybackEnd) ───────────────────
+    // Ended used to be emitted the moment the LAST PACKET was handed to the
+    // decoder, which is one to two seconds before the file has actually finished:
+    // frames still inside the HW decoder, frames queued for presentation, ~150 ms
+    // sitting in PulseAudio, plus (phone-camera clips do this systematically) an
+    // audio track that runs ~0.45 s past the end of the video track. These three
+    // flags let the feed thread wait for the real end instead.
+    std::atomic<bool> m_videoEos{false};   // codec's EOS callback has fired
+    std::atomic<bool> m_audioDone{false};  // audio thread returned from pa_simple_drain
+    std::atomic<bool> m_presenting{false}; // a frame is being paced right now
 };
 
 #endif // DROIDCODECBACKEND_H

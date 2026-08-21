@@ -158,13 +158,14 @@ void DroidVideoSink::presentBuffer(_DroidMediaBuffer *buffer)
         QMutexLocker lock(&m_mutex);
         drop = m_pending;
         m_pending = buffer;
+        m_cleared = false;      // there is something to draw again
     }
     if (drop)
         droid_media_buffer_release(drop, nullptr, nullptr); // never rendered → no GL fence
     QMetaObject::invokeMethod(this, "requestUpdate", Qt::QueuedConnection);
 }
 
-void DroidVideoSink::reset()
+void DroidVideoSink::reset(bool clearPicture)
 {
     // Drop references and return the buffers to the pool. Called before the codec
     // is destroyed (backend stop/seek) so the queue is still alive. The live
@@ -176,6 +177,8 @@ void DroidVideoSink::reset()
         p = m_pending;     m_pending = nullptr;
         c = m_current;     m_current = nullptr;
         if (m_currentImage) { m_deadImages.append(m_currentImage); m_currentImage = nullptr; }
+        if (clearPicture)
+            m_cleared = true;   // draw nothing until a new frame arrives
     }
     if (p) droid_media_buffer_release(p, nullptr, nullptr);
     if (c) droid_media_buffer_release(c, nullptr, nullptr);
@@ -188,10 +191,12 @@ QSGNode *DroidVideoSink::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *
     // reset() (stop/seek), which only this thread can destroy.
     _DroidMediaBuffer *newBuf = nullptr;
     QVector<void *> dead;
+    bool cleared = false;
     {
         QMutexLocker lock(&m_mutex);
         newBuf = m_pending;
         m_pending = nullptr;
+        cleared = m_cleared;
         dead.swap(m_deadImages);
     }
     if (pEglDestroyImageKHR)
@@ -199,6 +204,21 @@ QSGNode *DroidVideoSink::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *
             pEglDestroyImageKHR(eglGetCurrentDisplay(), img);
 
     QSGGeometryNode *node = static_cast<QSGGeometryNode *>(oldNode);
+
+    // reset() ran and nothing new has been decoded yet: stop drawing the previous
+    // clip's last frame, but KEEP the node. Returning null here would make the
+    // scene graph delete it, and the node built for the next clip never came back
+    // on screen (video gone, audio fine, until the page was reopened). Collapsing
+    // the quad draws nothing and leaves the node's lifetime alone.
+    if (cleared && !newBuf) {
+        if (node) {
+            QSGGeometry::TexturedPoint2D *v = node->geometry()->vertexDataAsTexturedPoint2D();
+            for (int i = 0; i < 4; ++i)
+                v[i].set(0.f, 0.f, 0.f, 0.f);
+            node->markDirty(QSGNode::DirtyGeometry);
+        }
+        return node;
+    }
     if (!node) {
         if (!newBuf)
             return nullptr; // nothing decoded yet → draw nothing

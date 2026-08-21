@@ -229,6 +229,9 @@ void DroidCodecBackend::play(const QString &url)
     m_paused = false;
     m_firstPtsUs = -1;
     m_loopOffsetUs.store(0);
+    m_videoEos = false;
+    m_audioDone = false;
+    m_presenting = false;
     { std::lock_guard<std::mutex> lk(m_clockMutex); m_clockValid = false; m_clockFrozen = false; }
     emitState(Opening);
     m_presentThread = std::thread([this]() { presentLoop(); });
@@ -288,7 +291,7 @@ void DroidCodecBackend::stop()
     // Return the sink's pinned buffers to the pool BEFORE destroying the codec
     // (the buffer queue dies with it), else a later release is use-after-free.
     if (m_sink)
-        m_sink->reset();
+        m_sink->reset(!m_seeking);   // a seek keeps the picture, a stop blanks it
     teardown();
     // Close this generation only now: teardown() is what makes the codec fire its EOS
     // callback, and that Ended must still carry the OLD generation so it is dropped.
@@ -314,7 +317,9 @@ void DroidCodecBackend::seek(qlonglong ms)
     if (ms < 0)
         ms = 0;
     m_startMs = ms;        // consumed by openInput() of the restarted pipeline
+    m_seeking = true;      // ...and stop() must not blank the picture meanwhile
     play(m_url);           // play() calls stop() first (joins threads, teardown)
+    m_seeking = false;
     m_positionMs = ms;     // optimistic until the first post-seek frame posts
     emit positionChanged();
 }
@@ -646,8 +651,20 @@ void DroidCodecBackend::videoFeedLoop()
         }
 
         if (!vp.data) {                       // EOF marker: signal end-of-stream
+            // Drain tells the decoder no more input is coming; it still has to push
+            // out the frames it holds. Ending here would cut the tail (see
+            // waitForPlaybackEnd), so wait for the pipeline to run dry first.
             droid_media_codec_drain(m_codec);
-            emitState(Ended);
+            waitForPlaybackEnd();
+            if (!m_stop) {
+                // Land the position exactly on the end: the last frame's timestamp
+                // is short of the file duration whenever the video track is (phone
+                // -camera clips always are), and a progress bar frozen at 89% reads
+                // as "it stopped early" even though the audio played out.
+                if (m_durationMs > 0)
+                    emit postPosition(m_durationMs);
+                emitState(Ended);
+            }
             continue;
         }
 
@@ -767,7 +784,8 @@ void DroidCodecBackend::audioLoop()
 
 done:
     if (m_pa && !m_stop)
-        pa_simple_drain(m_pa, &err);
+        pa_simple_drain(m_pa, &err);   // returns once the buffer has been played out
+    m_audioDone = true;                // ⇒ the audio side of the file is finished
     free(outBuf);
     av_frame_free(&frame);
 }
@@ -776,7 +794,78 @@ done:
 
 void DroidCodecBackend::eosCb(void *data)
 {
-    static_cast<DroidCodecBackend *>(data)->emitState(Ended);
+    // The decoder has emitted everything it had. NOT the end of playback: queued
+    // frames may still be waiting to be presented and the audio tail may still be
+    // playing. Just record it — waitForPlaybackEnd() decides when it is over.
+    // (This also fires during teardown(), which is why it must not emit anything.)
+    static_cast<DroidCodecBackend *>(data)->m_videoEos = true;
+}
+
+void DroidCodecBackend::waitForPlaybackEnd()
+{
+    // Runs on the video-feed thread once the last packet has been drained into the
+    // decoder. Playback is over when BOTH sides have run dry:
+    //   video — the codec signalled EOS (or stopped producing), the present queue
+    //           is empty and no frame is being paced;
+    //   audio — the audio thread has returned from pa_simple_drain(), i.e. the
+    //           PulseAudio buffer has actually been played out.
+    // Waiting for the audio is what restores the tail on phone-camera clips, whose
+    // audio track outlives the video track by ~0.45 s.
+    const int kIdleMs  = 500;    // no frames for this long ⇒ the decoder is done
+    const int kLimitMs = 15000;  // hang guard: never wait forever on a stuck codec
+
+    QElapsedTimer t;
+    t.start();
+    qint64 idleSince = -1;
+
+    while (!m_stop) {
+        if (m_paused) {          // paused on the last frame: don't run the guards
+            t.restart();
+            idleSince = -1;
+            QThread::msleep(20);
+            continue;
+        }
+
+        bool idle;
+        {
+            std::lock_guard<std::mutex> lk(m_frameQMutex);
+            idle = m_frameQ.empty();
+        }
+        idle = idle && !m_presenting.load();
+
+        if (!idle)
+            idleSince = -1;
+        else if (idleSince < 0)
+            idleSince = t.elapsed();
+
+        // Trust the EOS callback, but don't depend on it: if the decoder simply
+        // stops delivering, an idle present pipeline means the same thing.
+        const bool videoDone = idle && idleSince >= 0
+                && (m_videoEos.load() || t.elapsed() - idleSince >= kIdleMs);
+        const bool audioDone = !m_hasAudio.load() || m_audioDone.load();
+        if (videoDone && audioDone)
+            return;
+
+        // Keep the position moving while the audio tail plays. It is normally
+        // driven by presented frames, and there are none left down here.
+        if (m_hasAudio.load()) {
+            const qint64 clk = masterClockUs();
+            if (clk >= 0) {
+                const qint64 posMs = qMax<qint64>(0, (clk - m_loopOffsetUs.load()) / 1000);
+                if (posMs - m_lastPosEmitMs >= 200) {
+                    m_lastPosEmitMs = posMs;
+                    emit postPosition(m_durationMs > 0 ? qMin(posMs, (qint64)m_durationMs) : posMs);
+                }
+            }
+        }
+
+        if (t.elapsed() > kLimitMs) {
+            qWarning("DroidCodec: end-of-stream wait timed out (videoEos=%d audioDone=%d)",
+                     int(m_videoEos.load()), int(m_audioDone.load()));
+            return;
+        }
+        QThread::msleep(20);
+    }
 }
 
 void DroidCodecBackend::errorCb(void *data, int err)
@@ -894,8 +983,19 @@ void DroidCodecBackend::presentLoop()
     m_frameQNotFull.notify_all();
 }
 
+// RAII flag for the pacing window (see waitForPlaybackEnd): a frame popped from
+// the queue but not yet handed to the sink must not look like an idle pipeline.
+namespace {
+struct PresentingFlag {
+    std::atomic<bool> &f;
+    explicit PresentingFlag(std::atomic<bool> &flag) : f(flag) { f = true; }
+    ~PresentingFlag() { f = false; }
+};
+}
+
 void DroidCodecBackend::paceAndPresent(_DroidMediaBuffer *buffer, qint64 vptsUs)
 {
+    PresentingFlag presenting(m_presenting);
     // Runs on the present thread: pace against the master (audio) clock, post the
     // position, then hand the gralloc buffer to the zero-copy sink.
     const qint64 ts = vptsUs * 1000;

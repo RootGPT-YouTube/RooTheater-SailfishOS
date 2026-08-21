@@ -44,7 +44,9 @@ public:
     void presentBuffer(_DroidMediaBuffer *buffer);
 
     // Drop any held/pending buffers and clear the surface (e.g. on stop).
-    Q_INVOKABLE void reset();
+    // clearPicture=false keeps the last frame on screen (seek: the pipeline is
+    // restarted under it, and blanking would flash black on every seek).
+    Q_INVOKABLE void reset(bool clearPicture = true);
 
 protected:
     QSGNode *updatePaintNode(QSGNode *old, UpdatePaintNodeData *) override;
@@ -61,6 +63,12 @@ private:
     _DroidMediaBuffer *m_current = nullptr;   // bound in the live EGLImage
     void *m_currentImage = nullptr;           // EGLImageKHR of m_current
     QVector<void *> m_deadImages;             // EGLImageKHRs awaiting render-thread destroy
+    // Set by reset(), cleared by the next presented buffer. Without it the scene
+    // graph node survived a stop/track change and kept drawing the LAST frame of
+    // the previous clip: harmless-looking until the page applied the NEXT clip's
+    // display rotation to it — a rear-camera clip (-90) followed by a front-camera
+    // one (+90) redrew that stale frame 180° over.
+    bool m_cleared = false;
     unsigned int m_texture = 0;               // GLuint, GL_TEXTURE_EXTERNAL_OES
     int m_srcW = 0;                           // buffer (aligned) width
     int m_srcH = 0;                           // buffer (aligned) height

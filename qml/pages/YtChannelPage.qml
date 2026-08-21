@@ -56,9 +56,16 @@ Page {
             }
         }
 
+        // A failed fetch and a channel with nothing in it used to look identical
+        // here (an empty list, no message). Say which one it is, and why.
         ViewPlaceholder {
             enabled: feed.count === 0 && !feed.loading
-            text: qsTr("No recent videos")
+            text: feed.failedCount > 0 ? qsTr("Could not load this channel")
+                                       : qsTr("No recent videos")
+            hintText: feed.failedCount > 0
+                      ? qsTr("YouTube did not answer: %1\nPull down to retry.")
+                        .arg(feed.lastError)
+                      : ""
         }
 
         BusyIndicator {

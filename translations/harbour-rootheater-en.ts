@@ -996,6 +996,23 @@
         <source>Pull down to search videos and channels, or import a subscriptions file.</source>
         <translation>Pull down to search videos and channels, or import a subscriptions file.</translation>
     </message>
+    <message numerus="yes">
+        <source>%n channel(s) could not be loaded</source>
+        <translation>
+            <numerusform>%n channel could not be loaded</numerusform>
+            <numerusform>%n channels could not be loaded</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Could not load the feeds</source>
+        <translation>Could not load the feeds</translation>
+    </message>
+    <message>
+        <source>YouTube did not answer: %1
+Pull down to retry.</source>
+        <translation>YouTube did not answer: %1
+Pull down to retry.</translation>
+    </message>
 </context>
 <context>
     <name>YtChannelPage</name>
@@ -1030,6 +1047,27 @@
     <message>
         <source>No recent videos</source>
         <translation>No recent videos</translation>
+    </message>
+    <message>
+        <source>Could not load this channel</source>
+        <translation>Could not load this channel</translation>
+    </message>
+    <message>
+        <source>YouTube did not answer: %1
+Pull down to retry.</source>
+        <translation>YouTube did not answer: %1
+Pull down to retry.</translation>
+    </message>
+</context>
+<context>
+    <name>YtFeed</name>
+    <message>
+        <source>HTTP %1 — %2</source>
+        <translation>HTTP %1 — %2</translation>
+    </message>
+    <message>
+        <source>invalid response (HTTP %1, %2 bytes)</source>
+        <translation>invalid response (HTTP %1, %2 bytes)</translation>
     </message>
 </context>
 <context>

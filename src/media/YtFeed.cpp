@@ -30,6 +30,13 @@ YtFeed::YtFeed(QObject *parent)
     : QAbstractListModel(parent)
     , m_nam(new QNetworkAccessManager(this))
 {
+    // Qt 5.6's ConnMan bearer plugin sometimes decides the device is offline when
+    // it is not (an untranslatable technology in the service list is enough), and
+    // QNetworkAccessManager then refuses every request with NetworkSessionFailed
+    // without a single packet leaving. Nothing on the app side recovers from that,
+    // not even a restart. Take the decision away from the bearer plugin: a request
+    // on a genuinely dead network fails on its own, with a real error.
+    m_nam->setNetworkAccessible(QNetworkAccessManager::Accessible);
 }
 
 YtFeed::~YtFeed() = default;
@@ -82,6 +89,9 @@ void YtFeed::loadChannels(const QStringList &channelIds)
 
     m_pending = 0;
     m_retries.clear();
+    m_failed = 0;
+    m_lastError.clear();
+    emit errorChanged();
     QStringList ids;
     for (const QString &id : channelIds)
         if (!id.isEmpty())
@@ -136,37 +146,65 @@ void YtFeed::startNext(int gen)
             if (gen != m_generation)
                 return;         // superseded — leave the newer load's counters alone
             --m_active;
-            if (reply->error() == QNetworkReply::NoError) {
-                parseFeed(reply->readAll());
+
+            const int http = reply->attribute(
+                        QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const QByteArray body = reply->error() == QNetworkReply::NoError
+                                  ? reply->readAll() : QByteArray();
+            QString reason;
+
+            if (reply->error() != QNetworkReply::NoError) {
+                reason = http > 0
+                       ? tr("HTTP %1 — %2").arg(http).arg(reply->errorString())
+                       : reply->errorString();
+            } else if (!parseFeed(body)) {
+                // HTTP 200 with a body that is not an Atom feed. YouTube answers
+                // this way when it serves a consent/error/bot-check page instead of
+                // the feed, and treating it as success is exactly what made a failed
+                // channel look like an empty one. Retry it like any other failure.
+                reason = tr("invalid response (HTTP %1, %2 bytes)")
+                         .arg(http).arg(body.size());
+            }
+
+            if (reason.isEmpty()) {
                 finishOne();
             } else if (m_retries.value(id) < kRetryMax) {
                 // Transient failure: re-queue this channel after a short backoff
                 // instead of counting it done and losing it.
                 m_retries[id] += 1;
-                QTimer::singleShot(kRetryDelay, this, [this, id, gen]() {
+                qWarning("YtFeed: channel %s failed (%s) — retry %d/%d",
+                         qPrintable(id), qPrintable(reason),
+                         m_retries.value(id), kRetryMax);
+                QTimer::singleShot(kRetryDelay * m_retries.value(id), this,
+                                   [this, id, gen]() {
                     if (gen != m_generation)
                         return;
                     m_idQueue << id;
                     startNext(gen);
                 });
             } else {
-                finishOne();    // give up on this channel after the retries
+                failOne(id, reason);   // give up on this channel after the retries
             }
             startNext(gen);     // fill the freed slot with the next queued channel
         });
     }
 }
 
-void YtFeed::parseFeed(const QByteArray &xml)
+bool YtFeed::parseFeed(const QByteArray &xml)
 {
     // YouTube channel RSS is Atom: <feed><entry>… with yt:/media: extensions.
     QXmlStreamReader xr(xml);
     QVector<Video> parsed;
     QString feedAuthor;
+    bool sawFeed = false;       // did we get an Atom document at all?
 
     while (!xr.atEnd() && !xr.hasError()) {
         if (xr.readNext() != QXmlStreamReader::StartElement)
             continue;
+
+        if (xr.name() == QLatin1String("feed")) {
+            sawFeed = true;
+        }
 
         if (xr.name() == QLatin1String("entry")) {
             Video v;
@@ -207,11 +245,25 @@ void YtFeed::parseFeed(const QByteArray &xml)
         }
     }
 
+    // A real feed with no entries (a channel that has never uploaded) is a
+    // success with nothing to add; anything that was not a feed is a failure.
     if (parsed.isEmpty())
-        return;
+        return sawFeed && !xr.hasError();
+
     beginInsertRows(QModelIndex(), m_videos.size(), m_videos.size() + parsed.size() - 1);
     m_videos += parsed;
     endInsertRows();
+    return true;
+}
+
+void YtFeed::failOne(const QString &channelId, const QString &reason)
+{
+    ++m_failed;
+    m_lastError = reason;
+    qWarning("YtFeed: channel %s GIVEN UP after retries — %s",
+             qPrintable(channelId), qPrintable(reason));
+    emit errorChanged();
+    finishOne();
 }
 
 void YtFeed::finishOne()
@@ -226,5 +278,8 @@ void YtFeed::finishOne()
         endResetModel();
         emit countChanged();
         emit loadingChanged();
+        if (m_failed > 0)
+            qWarning("YtFeed: load finished with %d video(s), %d channel(s) failed",
+                     m_videos.size(), m_failed);
     }
 }

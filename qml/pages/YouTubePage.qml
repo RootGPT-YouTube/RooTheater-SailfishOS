@@ -53,7 +53,12 @@ Page {
             width: list.width
             PageHeader {
                 title: qsTr("YouTube")
-                description: page.statusText
+                // Transient notifications win; otherwise report channels whose
+                // feed failed, so a partial load is never mistaken for the truth.
+                description: page.statusText !== "" ? page.statusText
+                           : feed.failedCount > 0
+                             ? qsTr("%n channel(s) could not be loaded", "", feed.failedCount)
+                             : ""
             }
             // Import / backfill progress: fetching channel avatars & ids.
             ProgressBar {
@@ -97,6 +102,16 @@ Page {
             enabled: ytSubs.count === 0 && !ytSubs.busy
             text: qsTr("No subscriptions")
             hintText: qsTr("Pull down to search videos and channels, or import a subscriptions file.")
+        }
+
+        // Subscriptions exist but every feed failed: that is a load error, not an
+        // empty account. Without this it reads as "your channels have no videos".
+        ViewPlaceholder {
+            enabled: ytSubs.count > 0 && feed.count === 0
+                     && !feed.loading && !ytSubs.busy && feed.failedCount > 0
+            text: qsTr("Could not load the feeds")
+            hintText: qsTr("YouTube did not answer: %1\nPull down to retry.")
+                      .arg(feed.lastError)
         }
 
         BusyIndicator {

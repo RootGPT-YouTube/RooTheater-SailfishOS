@@ -40,6 +40,12 @@ class YtFeed : public QAbstractListModel
     Q_OBJECT
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    // Channels whose feed could not be fetched in this load, and a human-readable
+    // reason for the last one. A failed fetch used to be indistinguishable from a
+    // channel with no videos (both showed an empty list and no message), which made
+    // a transient YouTube/network failure look like the app losing the channel.
+    Q_PROPERTY(int failedCount READ failedCount NOTIFY errorChanged)
+    Q_PROPERTY(QString lastError READ lastError NOTIFY errorChanged)
 
 public:
     enum Roles {
@@ -61,6 +67,8 @@ public:
 
     bool loading() const { return m_pending > 0; }
     int count() const { return m_videos.size(); }
+    int failedCount() const { return m_failed; }
+    QString lastError() const { return m_lastError; }
 
     // Fetch the RSS feeds of these channel ids and show their videos merged and
     // sorted newest-first. Re-callable (replaces the current contents).
@@ -69,6 +77,7 @@ public:
 signals:
     void loadingChanged();
     void countChanged();
+    void errorChanged();
 
 private:
     struct Video {
@@ -80,8 +89,11 @@ private:
         qint64 published = 0;   // ms since epoch
     };
 
-    void parseFeed(const QByteArray &xml);
+    // Returns false when the body is not a usable Atom feed (see the .cpp): a
+    // channel with zero uploads is a success, a consent/error page is not.
+    bool parseFeed(const QByteArray &xml);
     void finishOne();
+    void failOne(const QString &channelId, const QString &reason);
     void startNext(int gen);    // launch queued fetches up to the concurrency cap
 
     QVector<Video> m_videos;
@@ -91,6 +103,8 @@ private:
     QStringList m_idQueue;      // channel ids still to fetch
     int m_active = 0;           // in-flight requests (bounded, see startNext)
     QHash<QString, int> m_retries;  // per-channel retry count (transient failures)
+    int m_failed = 0;               // channels given up on in this load
+    QString m_lastError;            // reason shown in the UI for the last failure
 };
 
 #endif // YTFEED_H

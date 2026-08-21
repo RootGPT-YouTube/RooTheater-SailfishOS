@@ -996,6 +996,23 @@
         <source>Pull down to search videos and channels, or import a subscriptions file.</source>
         <translation>Trascina verso il basso per cercare video e canali, o per importare un file di iscrizioni.</translation>
     </message>
+    <message numerus="yes">
+        <source>%n channel(s) could not be loaded</source>
+        <translation>
+            <numerusform>%n canale non caricato</numerusform>
+            <numerusform>%n canali non caricati</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Could not load the feeds</source>
+        <translation>Impossibile caricare i feed</translation>
+    </message>
+    <message>
+        <source>YouTube did not answer: %1
+Pull down to retry.</source>
+        <translation>YouTube non ha risposto: %1
+Trascina verso il basso per riprovare.</translation>
+    </message>
 </context>
 <context>
     <name>YtChannelPage</name>
@@ -1030,6 +1047,27 @@
     <message>
         <source>No recent videos</source>
         <translation>Nessun video recente</translation>
+    </message>
+    <message>
+        <source>Could not load this channel</source>
+        <translation>Impossibile caricare questo canale</translation>
+    </message>
+    <message>
+        <source>YouTube did not answer: %1
+Pull down to retry.</source>
+        <translation>YouTube non ha risposto: %1
+Trascina verso il basso per riprovare.</translation>
+    </message>
+</context>
+<context>
+    <name>YtFeed</name>
+    <message>
+        <source>HTTP %1 — %2</source>
+        <translation>HTTP %1 — %2</translation>
+    </message>
+    <message>
+        <source>invalid response (HTTP %1, %2 bytes)</source>
+        <translation>risposta non valida (HTTP %1, %2 byte)</translation>
     </message>
 </context>
 <context>
