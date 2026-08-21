@@ -75,7 +75,7 @@ Page {
     //  • orientation poller: the real dimensions usually arrive AFTER we're already
     //    fullscreen, so a 600ms poll re-reports until then and flips the page to
     //    landscape the moment they're known.
-    //  • quality cap: pins the best level up to 1080p instead of letting YouTube's
+    //  • quality cap: pins the best level up to 720p instead of letting YouTube's
     //    ABR drift with the bandwidth (see the block below for why it retries).
     // Background playback (cover / blank screen) is not handled here but by the
     // `active` override on the WebView below.
@@ -110,14 +110,16 @@ Page {
         "},true);});" +
         // Quality cap: YouTube's ABR otherwise picks by bandwidth and player
         // viewport and drifts around (360p on a slow moment, and it rarely climbs
-        // back). We pin the best level up to 1080p, stepping down the ladder to
-        // whatever this video actually offers. setPlaybackQualityRange is the
+        // back). We pin the best level up to 720p, stepping down the ladder to
+        // whatever this video actually offers. 1080p is deliberately NOT in the
+        // ladder: on older devices FHD decoding/scaling can't keep up and the
+        // playback stutters, so 720p is the ceiling. setPlaybackQualityRange is the
         // sticky one (ABR does not immediately override it); setPlaybackQuality is
         // fired too since older player builds only honour that. The level list is
         // empty until the player has media attached, so we retry until it answers,
         // and re-apply on every "playing" (an ad and the content that follows are
         // separate media with separate ladders).
-        "var RTQ=['hd1080','hd720','large','medium','small','tiny'];" +
+        "var RTQ=['hd720','large','medium','small','tiny'];" +
         "window.__rtQAvail='';window.__rtQSet='';" +
         "function setQ(){var p=document.getElementById('movie_player');" +
         "if(!p||typeof p.getAvailableQualityLevels!=='function')return false;" +

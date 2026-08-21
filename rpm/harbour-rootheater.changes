@@ -1,3 +1,9 @@
+* Thu Aug 21 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.0.1-1
+- YouTube: the quality cap is now 720p instead of 1080p. Pinning FHD made the
+  older devices struggle (decode + scaling can't keep up, playback stutters),
+  so 720p is the ceiling and the ladder steps down from there to whatever the
+  video actually offers.
+
 * Fri Jul 03 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 0.9.4-1
 - 0.9.4-beta.
 - YouTube: in-app search for videos AND channels, still fully keyless (no API
