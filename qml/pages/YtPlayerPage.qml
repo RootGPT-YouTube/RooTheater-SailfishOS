@@ -81,12 +81,27 @@ Page {
     // `active` override on the WebView below.
     readonly property string watchInitJs:
         "(function(){if(window.__rtInit)return;window.__rtInit=1;" +
+        // Diagnostic payload, piggybacked on the document.title channel below.
+        // (runJavaScript's return value never reaches its callback on this
+        // WebView, so the title is the only way back to QML.) It is what makes
+        // a frozen picture legible in the journal: `total` counts decoded
+        // frames, `drop` the ones thrown away before they could be painted.
+        "function diag(){try{var v=document.querySelector('video');if(!v)return 'novideo';" +
+        "var q={};try{if(v.getVideoPlaybackQuality)q=v.getVideoPlaybackQuality()||{};}catch(e){}" +
+        "return ['t='+(v.currentTime||0).toFixed(2),'pause='+(v.paused?1:0)," +
+        "'rs='+v.readyState,'size='+v.videoWidth+'x'+v.videoHeight," +
+        "'total='+(q.totalVideoFrames===undefined?'NA':q.totalVideoFrames)," +
+        "'drop='+(q.droppedVideoFrames===undefined?'NA':q.droppedVideoFrames)," +
+        "'buf='+(v.buffered.length?v.buffered.end(v.buffered.length-1).toFixed(1):'-')," +
+        "'q='+(window.__rtQSet||'?'),'err='+(v.error?v.error.code:0)," +
+        "(window.__rtWdMsg?'wd='+window.__rtWdMsg:'')].join(' ');" +
+        "}catch(e){return 'diagerr';}}" +
         // orientation reporter (portrait-safe: landscape only when proven wider)
         "function report(){var fe=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;" +
-        "if(!fe){document.title='RTFS:0';return;}" +
+        "if(!fe){document.title='RTFS:0|'+diag();return;}" +
         "var v=document.querySelector('video');var land=false;" +
         "if(v&&v.videoWidth&&v.videoHeight)land=(v.videoWidth>v.videoHeight);" +
-        "document.title='RTFS:1:'+(land?'land':'port');}" +
+        "document.title='RTFS:1:'+(land?'land':'port')+'|'+diag();}" +
         "['fullscreenchange','webkitfullscreenchange','mozfullscreenchange']" +
         ".forEach(function(e){document.addEventListener(e,report,true);});" +
         // The mobile watch page opens PAUSED (YouTube doesn't autoplay). We start
@@ -120,16 +135,77 @@ Page {
         // and re-apply on every "playing" (an ad and the content that follows are
         // separate media with separate ladders).
         "var RTQ=['hd720','large','medium','small','tiny'];" +
-        "window.__rtQAvail='';window.__rtQSet='';" +
+        "window.__rtQSet='';" +
         "function setQ(){var p=document.getElementById('movie_player');" +
         "if(!p||typeof p.getAvailableQualityLevels!=='function')return false;" +
         "var av=[];try{av=p.getAvailableQualityLevels()||[];}catch(e){return false;}" +
-        "if(!av.length)return false;window.__rtQAvail=av.join(',');" +
+        "if(!av.length)return false;" +
         "for(var i=0;i<RTQ.length;i++){if(av.indexOf(RTQ[i])<0)continue;" +
         "try{p.setPlaybackQualityRange(RTQ[i],RTQ[i]);}catch(e){}" +
         "try{p.setPlaybackQuality(RTQ[i]);}catch(e){}" +
         "window.__rtQSet=RTQ[i];return true;}return false;}" +
         "var qn=0;var qk=setInterval(function(){qn++;if(setQ()||qn>60)clearInterval(qk);},500);" +
+        // Background economy. Keeping the WebView alive is what lets the audio
+        // play on with the app minimised or the display off (see the `active`
+        // override below), but it also keeps Gecko decoding and compositing
+        // every frame at full resolution for nobody: measured on a POCO M4 Pro,
+        // a backgrounded 720p watch page still held the GPU at ~70% and drew
+        // ~2.8W — as much as with the screen on. So drop to the lowest quality
+        // on the way out and restore it on the way back. The audio track is
+        // untouched (it is a separate stream, and its bitrate does not follow
+        // the video ladder), so this costs the listener nothing. What was
+        // playing is remembered from the player itself, not from our own cap,
+        // so a quality the user picked by hand survives the round trip.
+        "function lowestQ(p){try{var av=p.getAvailableQualityLevels()||[];" +
+        "for(var i=RTQ.length-1;i>=0;i--)if(av.indexOf(RTQ[i])>=0)return RTQ[i];}catch(e){}return 'tiny';}" +
+        "window.__rtBg=function(on){var p=document.getElementById('movie_player');" +
+        "if(!p||typeof p.setPlaybackQualityRange!=='function')return;var q;" +
+        "if(on){if(!window.__rtQPrev){var cur='';" +
+        "try{cur=p.getPlaybackQuality();}catch(e){}" +
+        "window.__rtQPrev=cur||window.__rtQSet||'hd720';}" +
+        "q=lowestQ(p);}else{q=window.__rtQPrev||'hd720';window.__rtQPrev='';}" +
+        "try{p.setPlaybackQualityRange(q,q);}catch(e){}" +
+        "try{p.setPlaybackQuality(q);}catch(e){}window.__rtQSet=q;};" +
+        // Frozen-picture watchdog. On this engine the video decoder can end up
+        // starved of graphic buffers at high resolution: it keeps decoding at
+        // full rate, but the frames come back too late to be painted, so Gecko
+        // drops every one of them — the picture freezes while the audio (a
+        // separate, software-decoded track) plays on, and the pipeline never
+        // recovers by itself. Measured on a POCO M4 Pro at 1080p60: the MTK
+        // decoder logged `last successful dequeue was 3491356 us ago` while
+        // droppedVideoFrames grew exactly as fast as totalVideoFrames.
+        // So: watch those two counters, and when the dropped count keeps pace
+        // with the decoded count for ~2s while the clock is still running, treat
+        // the picture as frozen and re-prime the pipeline. A hair-thin seek is
+        // enough (it flushes the decoder and its buffer queue); if that does not
+        // take, replay, and as a last resort step the quality down a notch,
+        // which also makes a relapse less likely. Recoveries are rate-limited to
+        // one per 5s and reported to QML for the journal.
+        "var WD={total:0,drop:0,bad:0,ok:0,fixAt:0,step:0};" +
+        "function wdFix(v,p){var t=v.currentTime;WD.step++;" +
+        "if(WD.step===1){if(p&&p.seekTo)p.seekTo(t+0.05,true);else v.currentTime=t+0.05;" +
+        "return 'seek@'+t.toFixed(1);}" +
+        "if(WD.step===2){if(p&&p.pauseVideo&&p.playVideo){p.pauseVideo();" +
+        "setTimeout(function(){try{p.playVideo();}catch(e){}},150);return 'replay@'+t.toFixed(1);}" +
+        "return 'noapi@'+t.toFixed(1);}" +
+        "WD.step=0;var cur=window.__rtQSet||'';var i=RTQ.indexOf(cur);" +
+        "if(i>=0&&i+1<RTQ.length&&p&&p.setPlaybackQualityRange){var nx=RTQ[i+1];" +
+        "try{p.setPlaybackQualityRange(nx,nx);}catch(e){}try{p.setPlaybackQuality(nx);}catch(e){}" +
+        "window.__rtQSet=nx;return 'quality→'+nx+'@'+t.toFixed(1);}" +
+        "if(p&&p.seekTo)p.seekTo(t+0.05,true);return 'seek2@'+t.toFixed(1);}" +
+        "setInterval(function(){var v=document.querySelector('video');if(!v)return;" +
+        "var p=document.getElementById('movie_player');" +
+        "if(v.paused||v.seeking||v.readyState<3){WD.bad=0;return;}" +
+        "var q=null;try{q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():null;}catch(e){}" +
+        "if(!q||q.totalVideoFrames===undefined)return;" +
+        "var dt=q.totalVideoFrames-WD.total,dd=q.droppedVideoFrames-WD.drop;" +
+        "WD.total=q.totalVideoFrames;WD.drop=q.droppedVideoFrames;" +
+        "if(dt>0&&dd>=dt*0.9){WD.bad++;WD.ok=0;}else{WD.bad=0;if(++WD.ok>40)WD.step=0;}" +
+        "if(WD.bad<4)return;" +
+        "var now=Date.now();if(now-WD.fixAt<5000)return;WD.fixAt=now;WD.bad=0;" +
+        "window.__rtWdMsg=wdFix(v,p);report();" +
+        "setTimeout(function(){window.__rtWdMsg='';},4000);" +
+        "},500);" +
         // re-report when real dimensions arrive (metadata / resize / playback)
         "function hookV(v){if(!v||v.__rtV)return;v.__rtV=1;" +
         "['loadedmetadata','resize','playing'].forEach(function(e){v.addEventListener(e,report);});" +
@@ -199,6 +275,16 @@ Page {
         opacity: page.ready ? 1.0 : 0.0
         Behavior on opacity { FadeAnimation {} }
 
+        // Throttle the video to the cheapest level whenever the app is not in
+        // the foreground (minimised to the cover, or the display blanked), and
+        // put it back on return — see __rtBg above for why this matters.
+        property bool appActive: Qt.application.active
+        onAppActiveChanged: {
+            if (!page.ready)
+                return
+            runJavaScript("window.__rtBg&&window.__rtBg(" + (appActive ? "false" : "true") + ")")
+        }
+
         property bool consentDone: false
         onLoadingChanged: {
             if (loading) return
@@ -221,36 +307,32 @@ Page {
             var t = title
             if (t.indexOf("RTFS:") !== 0)
                 return
-            if (t === "RTFS:0")
+            var bar = t.indexOf("|")
+            var fs = bar >= 0 ? t.substring(0, bar) : t
+            if (bar >= 0) {
+                // Journal only around a watchdog recovery (the event itself plus
+                // the next few seconds, so a report shows whether it took):
+                // `sudo journalctl -b --no-pager | grep "YT diag"`. Steady-state
+                // playback stays silent.
+                var payload = t.substring(bar + 1)
+                var now = Date.now()
+                if (payload.indexOf("wd=") >= 0)
+                    lastWdSeen = now
+                if (now - lastWdSeen < 8000 && now - lastDiagLog > 1000) {
+                    lastDiagLog = now
+                    console.log("[RooTheater] YT diag: " + payload)
+                }
+            }
+            if (fs === "RTFS:0")
                 page.fsMode = 0
-            else if (t.indexOf(":land") > 0)
+            else if (fs.indexOf(":land") > 0)
                 page.fsMode = 1
-            else if (t.indexOf(":port") > 0)
+            else if (fs.indexOf(":port") > 0)
                 page.fsMode = 2
         }
+        property double lastDiagLog: 0
+        property double lastWdSeen: 0
         Timer { id: gotoWatch; interval: 400; onTriggered: web.url = page.watchUrl }
-
-        // Quality diagnostic: reports what YouTube actually offered for this video
-        // and which level the cap settled on, into the app journal
-        // (`sudo journalctl -b | grep "YT quality"`). Stops as soon as a level is
-        // pinned; the level list is only populated once media is attached, which on
-        // the mobile watch page is after the first tap.
-        Timer {
-            id: qualityProbe
-            running: page.ready
-            interval: 2000
-            repeat: true
-            onTriggered: web.runJavaScript(
-                "[window.__rtQAvail||'',window.__rtQSet||''].join('|')",
-                function (r) {
-                    if (!r || r === "|")
-                        return
-                    console.log("[RooTheater] YT quality: available=" + r.split("|")[0]
-                                + " picked=" + r.split("|")[1])
-                    if (r.split("|")[1] !== "")
-                        qualityProbe.running = false
-                })
-        }
 
         PullDownMenu {
             MenuItem {

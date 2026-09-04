@@ -1,4 +1,20 @@
-* Thu Aug 21 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.0.1-1
+* Thu Sep 03 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.1.0-1
+- YouTube: the video is throttled to the lowest quality while the app is in the
+  background, and restored on return. Background playback kept Gecko decoding
+  and compositing every frame at full resolution for nobody: measured on a POCO
+  M4 Pro with the screen off, the GPU sat at ~70% and the phone drew ~2.8W —
+  as much as with the screen on. Now it is ~18% and ~1.7W, a watt less, with
+  the audio untouched.
+- YouTube: recover from a frozen picture. The decoder can end up starved of
+  graphic buffers at high resolution and every frame then arrives too late to
+  be painted, so the picture freezes while the audio plays on — and it never
+  recovers by itself. A watchdog now spots it (dropped frames keeping pace with
+  decoded ones while the clock runs) and re-primes the pipeline with a seek,
+  then a replay, then a step down in quality.
+- Removed a quality probe that could never log anything: runJavaScript's return
+  value does not reach its callback on this WebView.
+
+* Fri Aug 21 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.0.1-1
 - YouTube: the quality cap is now 720p instead of 1080p. Pinning FHD made the
   older devices struggle (decode + scaling can't keep up, playback stutters),
   so 720p is the ceiling and the ladder steps down from there to whatever the
