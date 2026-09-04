@@ -1,3 +1,20 @@
+* Fri Sep 04 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.2.0-1
+- YouTube: import a hundred channels and you get a hundred avatars. Until now
+  the backfill filled exactly one more per app start, so a large import left the
+  Home grid mostly blank for weeks. Three separate faults were behind it: a
+  request with no timeout could hang and freeze the whole queue; without a
+  consent cookie YouTube answers a channel page with a redirect to its cookie
+  interstitial, ~590 KB with no og: tags at all, so the avatar was silently lost
+  while the request "succeeded"; and on Qt 5.6 aborting a reply leaves its HTTP
+  channel dirty, so every later request on the same manager finished instantly
+  with no data — which is why exactly as many avatars arrived as there were
+  parallel requests. Each channel page is now fetched over a manager of its own
+  and read as it streams, stopping at the avatar: ~270 KB instead of 2.4 MB.
+  Measured on a POCO M4 Pro: 48 channels from scratch, all filled in under 30
+  seconds with no retries.
+- YouTube: a "Fetch N missing avatars" item in the pull-down menu, for the ones
+  a failing channel page left behind, without waiting for the next app start.
+
 * Thu Sep 03 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.1.0-1
 - YouTube: the video is throttled to the lowest quality while the app is in the
   background, and restored on return. Background playback kept Gecko decoding

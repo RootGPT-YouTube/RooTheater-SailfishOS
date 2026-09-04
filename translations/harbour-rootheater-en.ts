@@ -972,6 +972,13 @@
         <source>Export failed</source>
         <translation>Export failed</translation>
     </message>
+    <message numerus="yes">
+        <source>Fetch %n missing avatar(s)</source>
+        <translation>
+            <numerusform>Fetch %n missing avatar</numerusform>
+            <numerusform>Fetch %n missing avatars</numerusform>
+        </translation>
+    </message>
     <message>
         <source>Reload</source>
         <translation>Reload</translation>

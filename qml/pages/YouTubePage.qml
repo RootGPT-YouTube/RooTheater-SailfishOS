@@ -91,6 +91,14 @@ Page {
                                              : qsTr("Export failed"))
                 }
             }
+            // A big import fetches the avatars in the background; if some are
+            // still missing (a channel page that would not answer), this asks
+            // for them again without waiting for the next app start.
+            MenuItem {
+                text: qsTr("Fetch %n missing avatar(s)", "", ytSubs.missingAvatars)
+                visible: ytSubs.missingAvatars > 0 && !ytSubs.filling
+                onClicked: ytSubs.fillMissing()
+            }
             MenuItem {
                 text: qsTr("Reload")
                 enabled: ytSubs.count > 0

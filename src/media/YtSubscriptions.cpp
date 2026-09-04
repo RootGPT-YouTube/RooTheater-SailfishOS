@@ -36,6 +36,7 @@
 #include <QSqlQuery>
 #include <QDateTime>
 #include <QXmlStreamReader>
+#include <QSharedPointer>
 #include <private/qzipreader_p.h>
 #include <algorithm>
 
@@ -43,6 +44,35 @@ namespace {
 
 const char *kBrowserUA =
     "Mozilla/5.0 (X11; Linux x86_64; rv:91.0) Gecko/20100101 Firefox/91.0";
+
+// The mobile channel page carries the same og:/canonical tags as the desktop
+// one in about half the bytes, and puts them ~270 KB in instead of ~750 KB —
+// which matters a lot when backfilling a hundred channels over mobile data.
+const char *kMobileUA =
+    "Mozilla/5.0 (Linux; Android 10; Mobile; rv:91.0) Gecko/91.0 Firefox/91.0";
+
+// Without a consent cookie YouTube answers a channel page with a 302 to
+// consent.youtube.com, whose ~590 KB interstitial carries no og: tags at all —
+// the request "succeeds" and the avatar is silently lost. This is the cookie the
+// consent dialog itself sets when you accept, and it makes the page render.
+const char *kConsentCookie = "SOCS=CAI";
+
+// Backfill tuning: two channels in flight, each bounded by a timeout, each job
+// retried a couple of times before it is given up on.
+const int kFillMaxActive = 2;
+const int kFillTimeoutMs = 20000;
+const int kFillMaxTries  = 3;
+const int kFillDelayMs   = 250;
+const int kScanOverlap   = 8192;   // bytes kept between chunks while scanning
+
+// The channel page on m.youtube.com, whatever form the stored url has.
+QString mobileChannelUrl(const QString &url)
+{
+    QString u = url;
+    u.replace(QLatin1String("://www.youtube.com/"), QLatin1String("://m.youtube.com/"));
+    u.replace(QLatin1String("://youtube.com/"),     QLatin1String("://m.youtube.com/"));
+    return u;
+}
 
 // A YouTube channel id: "UC" + 22 url-safe base64 chars.
 const QRegularExpression reChannelId(QStringLiteral("(UC[0-9A-Za-z_-]{22})"));
@@ -140,10 +170,7 @@ YtSubscriptions::YtSubscriptions(QObject *parent)
     load();
     // Backfill avatars (and channel ids) still missing from a previous import —
     // re-importing would skip already-subscribed channels, so heal them here.
-    for (const Sub &s : m_subs)
-        if (s.avatar.isEmpty() || s.channelId.isEmpty())
-            enqueueFill(s.channelId, s.url);
-    processFillQueue();
+    fillMissing();
 }
 
 YtSubscriptions::~YtSubscriptions() = default;
@@ -465,6 +492,7 @@ void YtSubscriptions::fetchChannelMeta(const QString &channelPageUrl, bool addAf
     req.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
     req.setHeader(QNetworkRequest::UserAgentHeader, QString::fromLatin1(kBrowserUA));
     req.setRawHeader("Accept-Language", "en-US,en;q=0.9");
+    req.setRawHeader("Cookie", kConsentCookie);   // else: 302 → consent page, no og: tags
     QNetworkReply *reply = m_nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply, channelPageUrl, addAfter]() {
         reply->deleteLater();
@@ -691,44 +719,130 @@ QString YtSubscriptions::exportToDir(const QString &dirUrl)
 }
 
 // ── background avatar / handle fill ──────────────────────────────────────────
+//
+// Filling a channel means fetching its page and reading og:image (avatar),
+// og:title (name) and the canonical link (channel id) out of it. That page is
+// huge (~2 MB on www, ~1.3 MB on m.youtube.com) and YouTube is happy to let a
+// connection hang, so a big import needs three things or it stops after the
+// first channel: a timeout that aborts a stalled request, retries that put the
+// job back in the queue instead of dropping it, and an early abort as soon as
+// the tags are in (they sit in the first ~300 KB of the mobile page).
 
 void YtSubscriptions::enqueueFill(const QString &channelId, const QString &url)
 {
-    m_fillQueue.enqueue({ channelId, url });
+    if (url.isEmpty())
+        return;
+    const QString key = channelId.isEmpty() ? url : channelId;
+    if (m_fillPending.contains(key))     // already queued or in flight
+        return;
+    m_fillPending.insert(key);
+    m_fillQueue.enqueue({ channelId, url, 0 });
     ++m_fillTotal;
     emit fillChanged();
 }
 
+void YtSubscriptions::fillMissing()
+{
+    for (const Sub &s : m_subs)
+        if (s.avatar.isEmpty() || s.channelId.isEmpty())
+            enqueueFill(s.channelId, s.url);
+    processFillQueue();
+}
+
+int YtSubscriptions::missingAvatars() const
+{
+    int n = 0;
+    for (const Sub &s : m_subs)
+        if (s.avatar.isEmpty() || s.channelId.isEmpty())
+            ++n;
+    return n;
+}
+
 void YtSubscriptions::processFillQueue()
 {
-    if (m_filling)
-        return;
-    if (m_fillQueue.isEmpty()) {
+    while (m_fillActive < kFillMaxActive && !m_fillQueue.isEmpty())
+        startFillJob(m_fillQueue.dequeue());
+
+    if (m_fillActive == 0 && m_fillQueue.isEmpty() && m_fillTotal > 0) {
         // Batch drained: reset the progress counters and let the UI reload feeds.
-        if (m_fillTotal > 0) {
-            m_fillTotal = 0;
-            m_fillDone = 0;
-            emit fillChanged();
-            emit fillFinished();
-        }
-        return;
+        m_fillTotal = 0;
+        m_fillDone = 0;
+        emit fillChanged();
+        emit fillFinished();
     }
-    m_filling = true;
-    const FillJob job = m_fillQueue.dequeue();
+}
 
-    QNetworkRequest req{QUrl(job.url)};
+void YtSubscriptions::startFillJob(const FillJob &job)
+{
+    ++m_fillActive;
+
+    // A throw-away manager per job: we abort the download as soon as the tags are
+    // in, and on Qt 5.6 an aborted reply leaves its HTTP channel dirty — every
+    // later request on that same manager then "finishes" instantly with no data
+    // and no error, which is how all the avatars after the first two got lost.
+    QNetworkAccessManager *nam = new QNetworkAccessManager(this);
+
+    QNetworkRequest req{QUrl(mobileChannelUrl(job.url))};
     req.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
-    req.setHeader(QNetworkRequest::UserAgentHeader, QString::fromLatin1(kBrowserUA));
+    req.setHeader(QNetworkRequest::UserAgentHeader, QString::fromLatin1(kMobileUA));
     req.setRawHeader("Accept-Language", "en-US,en;q=0.9");
-    QNetworkReply *reply = m_nam->get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, job]() {
-        reply->deleteLater();
-        if (reply->error() == QNetworkReply::NoError) {
-            const QByteArray html = reply->readAll();
-            const QString s = QString::fromUtf8(html);
-            QString id = job.channelId.isEmpty() ? channelIdFromHtml(html) : job.channelId;
-            const QString avatar = metaContent(s, QStringLiteral("og:image"));
+    req.setRawHeader("Cookie", kConsentCookie);
+    QNetworkReply *reply = nam->get(req);
 
+    // Scanned-as-it-arrives state, shared by the readyRead and finished handlers.
+    struct Scan {
+        QByteArray tail;        // unscanned bytes + a small overlap
+        QString id;
+        QString avatar;
+        QString name;
+        bool complete = false;  // got everything we came for → aborted on purpose
+    };
+    auto scan = QSharedPointer<Scan>::create();
+    scan->id = job.channelId;
+
+    // Qt 5.6 has no QNetworkRequest::setTransferTimeout, so bound the request
+    // with a single-shot timer that aborts a stalled reply (→ finished w/ error).
+    QTimer *timer = new QTimer(reply);
+    timer->setSingleShot(true);
+    connect(timer, &QTimer::timeout, reply, &QNetworkReply::abort);
+    timer->start(kFillTimeoutMs);
+
+    auto consume = [scan](const QByteArray &chunk) {
+        if (chunk.isEmpty())
+            return;
+        scan->tail += chunk;
+        if (scan->id.isEmpty())
+            scan->id = channelIdFromHtml(scan->tail);
+        if (scan->avatar.isEmpty() || scan->name.isEmpty()) {
+            const QString s = QString::fromUtf8(scan->tail);
+            if (scan->avatar.isEmpty())
+                scan->avatar = metaContent(s, QStringLiteral("og:image"));
+            if (scan->name.isEmpty())
+                scan->name = metaContent(s, QStringLiteral("og:title"));
+        }
+        // Keep only a small overlap so a tag split across two chunks is still
+        // matched, without ever holding the whole megabyte-sized page in memory.
+        if (scan->tail.size() > kScanOverlap)
+            scan->tail = scan->tail.right(kScanOverlap);
+    };
+
+    connect(reply, &QNetworkReply::readyRead, this, [reply, scan, consume]() {
+        consume(reply->readAll());
+        if (!scan->id.isEmpty() && !scan->avatar.isEmpty() && !scan->complete) {
+            scan->complete = true;   // stop the download ~1 MB early
+            reply->abort();
+        }
+    });
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, nam, job, scan, consume]() {
+        reply->deleteLater();
+        nam->deleteLater();
+        consume(reply->readAll());
+
+        // Success means we actually got the avatar: `id` is usually already known,
+        // so testing it too would mark an empty response as done and never retry.
+        const bool ok = !scan->avatar.isEmpty();
+        if (ok) {
             // Match the row: by channelId when known, else by the (handle) url.
             int row = -1;
             for (int i = 0; i < m_subs.size(); ++i) {
@@ -738,22 +852,38 @@ void YtSubscriptions::processFillQueue()
                 }
             }
             if (row >= 0) {
-                if (!id.isEmpty()) {
-                    m_subs[row].channelId = id;
-                    m_subs[row].url = QStringLiteral("https://www.youtube.com/channel/") + id;
+                if (!scan->id.isEmpty()) {
+                    m_subs[row].channelId = scan->id;
+                    m_subs[row].url = QStringLiteral("https://www.youtube.com/channel/") + scan->id;
                 }
-                if (!avatar.isEmpty())
-                    m_subs[row].avatar = avatar;
+                if (!scan->avatar.isEmpty())
+                    m_subs[row].avatar = scan->avatar;
+                if (m_subs.at(row).name.isEmpty() && !scan->name.isEmpty())
+                    m_subs[row].name = scan->name;
                 const QModelIndex mi = index(row, 0);
                 emit dataChanged(mi, mi);
                 save();
             }
         }
-        m_filling = false;
-        ++m_fillDone;
+
+        --m_fillActive;
+        FillJob next = job;
+        if (!ok && ++next.tries < kFillMaxTries) {
+            // Failed (or aborted by the timeout): back of the queue, so the other
+            // channels keep going and this one is tried again in a moment.
+            qWarning("YtSubscriptions: fill of %s failed (%s) — retry %d/%d",
+                     qPrintable(job.url), qPrintable(reply->errorString()),
+                     next.tries, kFillMaxTries - 1);
+            m_fillQueue.enqueue(next);
+        } else {
+            if (!ok)
+                qWarning("YtSubscriptions: giving up on %s", qPrintable(job.url));
+            m_fillPending.remove(job.channelId.isEmpty() ? job.url : job.channelId);
+            ++m_fillDone;
+        }
         emit fillChanged();
         // Gentle pacing: next job after a short delay.
-        QTimer::singleShot(400, this, [this]() { processFillQueue(); });
+        QTimer::singleShot(kFillDelayMs, this, [this]() { processFillQueue(); });
     });
 }
 

@@ -24,6 +24,7 @@
 #include <QVector>
 #include <QStringList>
 #include <QQueue>
+#include <QSet>
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -47,6 +48,9 @@ class YtSubscriptions : public QAbstractListModel
     // shows a progress bar and reloads the feeds when fillFinished() fires.
     Q_PROPERTY(bool filling READ filling NOTIFY fillChanged)
     Q_PROPERTY(qreal fillProgress READ fillProgress NOTIFY fillChanged)
+    // Subscriptions still without an avatar (or a resolved channel id): lets the
+    // UI offer a "fetch the missing ones" action instead of waiting for a restart.
+    Q_PROPERTY(int missingAvatars READ missingAvatars NOTIFY fillChanged)
 
 public:
     enum Roles {
@@ -68,6 +72,11 @@ public:
     bool busy() const { return m_busy; }
     bool filling() const { return m_fillTotal > 0; }
     qreal fillProgress() const { return m_fillTotal > 0 ? qreal(m_fillDone) / m_fillTotal : 0.0; }
+    int missingAvatars() const;
+
+    // Queue every subscription that still misses an avatar/channel id and start
+    // draining. Runs at startup, after an import, and on demand from the UI.
+    Q_INVOKABLE void fillMissing();
 
     // Add a channel from a pasted URL/@handle (or a video URL → its channel).
     // Resolves channelId/name/avatar keyless, then appends + persists. No-op if
@@ -128,6 +137,8 @@ private:
         int unseen = 0;      // transient count from the last refreshUnseen()
     };
 
+    struct FillJob { QString channelId; QString url; int tries = 0; };
+
     void setBusy(bool on);
     void load();
     void save() const;
@@ -153,10 +164,12 @@ private:
     void finishImport(int addedCount);
 
     // Background fill for imported entries missing an avatar (and handle urls
-    // missing a channelId): one request at a time so an import of a big list
-    // doesn't hammer the network.
+    // missing a channelId): a couple of requests at a time so an import of a big
+    // list doesn't hammer the network, each one bounded by a timeout and retried
+    // rather than dropped — one stalled channel page must not stop the batch.
     void enqueueFill(const QString &channelId, const QString &url);
     void processFillQueue();
+    void startFillJob(const FillJob &job);
 
     // Unseen-count refresh: fetch channel RSS feeds (bounded concurrency) and
     // count videos newer than each channel's lastSeen.
@@ -166,9 +179,9 @@ private:
     QNetworkAccessManager *m_nam = nullptr;
     bool m_busy = false;
 
-    struct FillJob { QString channelId; QString url; };
     QQueue<FillJob> m_fillQueue;
-    bool m_filling = false;
+    QSet<QString> m_fillPending;  // keys (channelId or url) queued or in flight
+    int m_fillActive = 0;  // requests currently in flight
     int m_fillTotal = 0;   // items in the current backfill batch
     int m_fillDone = 0;    // completed so far
 
