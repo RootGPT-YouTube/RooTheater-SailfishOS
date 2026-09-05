@@ -24,6 +24,16 @@
 #include <QUrl>
 #include <QXmlStreamReader>
 #include <QTimer>
+#include <QDir>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QFile>
+#include <QStandardPaths>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonParseError>
+#include <QDateTime>
 #include <algorithm>
 
 YtFeed::YtFeed(QObject *parent)
@@ -91,6 +101,8 @@ void YtFeed::loadChannels(const QStringList &channelIds)
     m_retries.clear();
     m_failed = 0;
     m_lastError.clear();
+    m_stale = 0;
+    m_staleSince = 0;
     emit errorChanged();
     QStringList ids;
     for (const QString &id : channelIds)
@@ -152,12 +164,13 @@ void YtFeed::startNext(int gen)
             const QByteArray body = reply->error() == QNetworkReply::NoError
                                   ? reply->readAll() : QByteArray();
             QString reason;
+            QVector<Video> parsed;
 
             if (reply->error() != QNetworkReply::NoError) {
                 reason = http > 0
                        ? tr("HTTP %1 — %2").arg(http).arg(reply->errorString())
                        : reply->errorString();
-            } else if (!parseFeed(body)) {
+            } else if (!parseFeed(body, &parsed)) {
                 // HTTP 200 with a body that is not an Atom feed. YouTube answers
                 // this way when it serves a consent/error/bot-check page instead of
                 // the feed, and treating it as success is exactly what made a failed
@@ -167,6 +180,12 @@ void YtFeed::startNext(int gen)
             }
 
             if (reason.isEmpty()) {
+                appendVideos(parsed);
+                // Keep the last good list for this channel. Only a non-empty one:
+                // a channel that legitimately has no uploads parses fine and would
+                // otherwise wipe a perfectly good cache with nothing.
+                if (!parsed.isEmpty())
+                    writeCache(id, parsed);
                 finishOne();
             } else if (m_retries.value(id) < kRetryMax) {
                 // Transient failure: re-queue this channel after a short backoff
@@ -190,7 +209,7 @@ void YtFeed::startNext(int gen)
     }
 }
 
-bool YtFeed::parseFeed(const QByteArray &xml)
+bool YtFeed::parseFeed(const QByteArray &xml, QVector<Video> *out) const
 {
     // YouTube channel RSS is Atom: <feed><entry>… with yt:/media: extensions.
     QXmlStreamReader xr(xml);
@@ -250,10 +269,17 @@ bool YtFeed::parseFeed(const QByteArray &xml)
     if (parsed.isEmpty())
         return sawFeed && !xr.hasError();
 
-    beginInsertRows(QModelIndex(), m_videos.size(), m_videos.size() + parsed.size() - 1);
-    m_videos += parsed;
-    endInsertRows();
+    *out = parsed;
     return true;
+}
+
+void YtFeed::appendVideos(const QVector<Video> &vids)
+{
+    if (vids.isEmpty())
+        return;
+    beginInsertRows(QModelIndex(), m_videos.size(), m_videos.size() + vids.size() - 1);
+    m_videos += vids;
+    endInsertRows();
 }
 
 void YtFeed::failOne(const QString &channelId, const QString &reason)
@@ -262,8 +288,136 @@ void YtFeed::failOne(const QString &channelId, const QString &reason)
     m_lastError = reason;
     qWarning("YtFeed: channel %s GIVEN UP after retries — %s",
              qPrintable(channelId), qPrintable(reason));
+
+    // The feed service can be down while YouTube itself is fine: measured on
+    // 2026-09-05, feeds/videos.xml answered 404 (and sometimes 500) for EVERY
+    // channel — including YouTube's own — while /channel/UC… still answered 200.
+    // The videos that feed would have listed stay watchable throughout, because
+    // playback goes to the watch page and only needs the video id. So rather
+    // than show an empty page, fall back to the last list saved for this
+    // channel: out of date, said so in the UI, and still usable.
+    qint64 savedAt = 0;
+    const QVector<Video> cached = readCache(channelId, &savedAt);
+    if (!cached.isEmpty()) {
+        appendVideos(cached);
+        ++m_stale;
+        if (m_staleSince == 0 || (savedAt > 0 && savedAt < m_staleSince))
+            m_staleSince = savedAt;
+        qWarning("YtFeed: channel %s served from cache — %d video(s), saved %s",
+                 qPrintable(channelId), cached.size(),
+                 qPrintable(QDateTime::fromMSecsSinceEpoch(savedAt).toString(Qt::ISODate)));
+    }
+
     emit errorChanged();
     finishOne();
+}
+
+QString YtFeed::cachePath(const QString &channelId)
+{
+    // Same sandbox rule as the subscriptions file (YtSubscriptions::storePath):
+    // Sailjail grants write access under the app's IDENTITY dir, so the cache
+    // must live in ~/.cache/com.github.RootGPT_YouTube/rootheater/ and NOT in
+    // ~/.cache/harbour-rootheater/, which is what QStandardPaths::AppCacheLocation
+    // returns here (applicationName is "harbour-rootheater", organization unset).
+    // Writing to the unpermitted path fails SILENTLY — that is how the
+    // subscriptions once vanished on restart.
+    QString id;                        // a channel id must never become a path
+    for (const QChar &c : channelId)
+        if (c.isLetterOrNumber() || c == QLatin1Char('_') || c == QLatin1Char('-'))
+            id += c;
+    if (id.isEmpty())
+        return QString();
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
+    return base + QStringLiteral("/com.github.RootGPT_YouTube/rootheater/feeds/")
+         + id + QStringLiteral(".json");
+}
+
+void YtFeed::writeCache(const QString &channelId, const QVector<Video> &vids) const
+{
+    const QString path = cachePath(channelId);
+    if (path.isEmpty())
+        return;
+    QDir().mkpath(QFileInfo(path).absolutePath());
+
+    QJsonArray arr;
+    for (const Video &v : vids) {
+        QJsonObject o;
+        o[QStringLiteral("videoId")]     = v.videoId;
+        o[QStringLiteral("title")]       = v.title;
+        o[QStringLiteral("thumbnail")]   = v.thumbnail;
+        o[QStringLiteral("channelId")]   = v.channelId;
+        o[QStringLiteral("channelName")] = v.channelName;
+        // qint64 through QJsonValue is a double: video ids and ms timestamps are
+        // both well inside the 2^53 that survives that round trip exactly.
+        o[QStringLiteral("published")]   = static_cast<double>(v.published);
+        arr.append(o);
+    }
+    QJsonObject root;
+    root[QStringLiteral("saved")]  = static_cast<double>(QDateTime::currentMSecsSinceEpoch());
+    root[QStringLiteral("videos")] = arr;
+
+    // QSaveFile so a crash mid-write cannot leave a truncated cache behind: the
+    // old file stays until the new one is complete.
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly)) {
+        qWarning("YtFeed: cannot write cache %s", qPrintable(path));
+        return;
+    }
+    f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    if (!f.commit())
+        qWarning("YtFeed: cache commit failed for %s", qPrintable(path));
+}
+
+QVector<YtFeed::Video> YtFeed::readCache(const QString &channelId, qint64 *savedAt) const
+{
+    QVector<Video> out;
+    if (savedAt)
+        *savedAt = 0;
+    const QString path = cachePath(channelId);
+    if (path.isEmpty())
+        return out;
+
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) {
+        // Not an error in itself (a channel never loaded yet has no cache), but
+        // the path is worth having in the journal: it is the one thing that can
+        // silently differ between what we write and what the sandbox permits.
+        qWarning("YtFeed: no cache for %s at %s — %s", qPrintable(channelId),
+                 qPrintable(path), qPrintable(f.errorString()));
+        return out;
+    }
+    const QByteArray raw = f.readAll();
+    QJsonParseError perr;
+    const QJsonDocument doc = QJsonDocument::fromJson(raw, &perr);
+    if (!doc.isObject()) {
+        qWarning("YtFeed: cache %s unreadable (%d bytes) — %s", qPrintable(path),
+                 raw.size(), qPrintable(perr.errorString()));
+        return out;
+    }
+    const QJsonObject root = doc.object();
+    if (savedAt)
+        *savedAt = static_cast<qint64>(root.value(QStringLiteral("saved")).toDouble());
+
+    const QJsonArray arr = root.value(QStringLiteral("videos")).toArray();
+    for (const QJsonValue &val : arr) {
+        const QJsonObject o = val.toObject();
+        Video v;
+        v.videoId     = o.value(QStringLiteral("videoId")).toString();
+        if (v.videoId.isEmpty())
+            continue;
+        v.title       = o.value(QStringLiteral("title")).toString();
+        v.thumbnail   = o.value(QStringLiteral("thumbnail")).toString();
+        v.channelId   = o.value(QStringLiteral("channelId")).toString();
+        v.channelName = o.value(QStringLiteral("channelName")).toString();
+        v.published   = static_cast<qint64>(o.value(QStringLiteral("published")).toDouble());
+        if (v.thumbnail.isEmpty())
+            v.thumbnail = QStringLiteral("https://i.ytimg.com/vi/%1/mqdefault.jpg").arg(v.videoId);
+        out.append(v);
+    }
+    if (out.isEmpty())
+        qWarning("YtFeed: cache %s has no usable entries (%d bytes, %d raw)",
+                 qPrintable(path), raw.size(), arr.size());
+    return out;
 }
 
 void YtFeed::finishOne()

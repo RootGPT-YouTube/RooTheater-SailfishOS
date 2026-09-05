@@ -1020,6 +1020,14 @@ Pull down to retry.</source>
         <translation>YouTube did not answer: %1
 Pull down to retry.</translation>
     </message>
+    <message>
+        <source>YouTube is not serving its video feeds right now. Showing the list saved on %1 — the videos still play.</source>
+        <translation>YouTube is not serving its video feeds right now. Showing the list saved on %1 — the videos still play.</translation>
+    </message>
+    <message>
+        <source>YouTube is not serving its video feeds right now. Showing the last saved list — the videos still play.</source>
+        <translation>YouTube is not serving its video feeds right now. Showing the last saved list — the videos still play.</translation>
+    </message>
 </context>
 <context>
     <name>YtChannelPage</name>
@@ -1064,6 +1072,14 @@ Pull down to retry.</translation>
 Pull down to retry.</source>
         <translation>YouTube did not answer: %1
 Pull down to retry.</translation>
+    </message>
+    <message>
+        <source>YouTube is not serving its video feeds right now. Showing the list saved on %1 — the videos still play.</source>
+        <translation>YouTube is not serving its video feeds right now. Showing the list saved on %1 — the videos still play.</translation>
+    </message>
+    <message>
+        <source>YouTube is not serving its video feeds right now. Showing the last saved list — the videos still play.</source>
+        <translation>YouTube is not serving its video feeds right now. Showing the last saved list — the videos still play.</translation>
     </message>
 </context>
 <context>

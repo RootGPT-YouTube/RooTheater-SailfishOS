@@ -1020,6 +1020,14 @@ Pull down to retry.</source>
         <translation>YouTube non ha risposto: %1
 Trascina verso il basso per riprovare.</translation>
     </message>
+    <message>
+        <source>YouTube is not serving its video feeds right now. Showing the list saved on %1 — the videos still play.</source>
+        <translation>Al momento YouTube non sta servendo i feed dei video. Questo è l&apos;elenco salvato il %1 — i video si vedono lo stesso.</translation>
+    </message>
+    <message>
+        <source>YouTube is not serving its video feeds right now. Showing the last saved list — the videos still play.</source>
+        <translation>Al momento YouTube non sta servendo i feed dei video. Questo è l&apos;ultimo elenco salvato — i video si vedono lo stesso.</translation>
+    </message>
 </context>
 <context>
     <name>YtChannelPage</name>
@@ -1064,6 +1072,14 @@ Trascina verso il basso per riprovare.</translation>
 Pull down to retry.</source>
         <translation>YouTube non ha risposto: %1
 Trascina verso il basso per riprovare.</translation>
+    </message>
+    <message>
+        <source>YouTube is not serving its video feeds right now. Showing the list saved on %1 — the videos still play.</source>
+        <translation>Al momento YouTube non sta servendo i feed dei video. Questo è l&apos;elenco salvato il %1 — i video si vedono lo stesso.</translation>
+    </message>
+    <message>
+        <source>YouTube is not serving its video feeds right now. Showing the last saved list — the videos still play.</source>
+        <translation>Al momento YouTube non sta servendo i feed dei video. Questo è l&apos;ultimo elenco salvato — i video si vedono lo stesso.</translation>
     </message>
 </context>
 <context>

@@ -33,8 +33,35 @@ Page {
         anchors.fill: parent
         model: feed
 
-        header: PageHeader {
-            title: page.channelName.length > 0 ? page.channelName : qsTr("Channel")
+        header: Column {
+            width: parent.width
+
+            PageHeader {
+                title: page.channelName.length > 0 ? page.channelName : qsTr("Channel")
+            }
+
+            // YouTube's feed service can be down while YouTube itself is up: on
+            // 2026-09-05 feeds/videos.xml answered 404/500 for every channel while
+            // the channel pages still answered 200. The list below then comes from
+            // the copy saved on disk — say so, and say when, instead of letting an
+            // old list pass for a fresh one. The videos in it still play: playback
+            // goes to the watch page, which needs only the video id.
+            Label {
+                visible: feed.staleCount > 0
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * Theme.horizontalPageMargin
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.highlightColor
+                // Two separate sentences rather than one with a %1 that is
+                // sometimes a date and sometimes a word: "saved on 5/9/26" and
+                // "the last saved list" do not share a grammatical shape, in
+                // English or in Italian.
+                text: feed.staleSince > 0
+                      ? qsTr("YouTube is not serving its video feeds right now. Showing the list saved on %1 — the videos still play.")
+                        .arg(Qt.formatDateTime(new Date(feed.staleSince), Qt.DefaultLocaleShortDate))
+                      : qsTr("YouTube is not serving its video feeds right now. Showing the last saved list — the videos still play.")
+            }
         }
 
         PullDownMenu {

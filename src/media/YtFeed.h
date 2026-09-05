@@ -46,6 +46,13 @@ class YtFeed : public QAbstractListModel
     // a transient YouTube/network failure look like the app losing the channel.
     Q_PROPERTY(int failedCount READ failedCount NOTIFY errorChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY errorChanged)
+    // A channel whose feed cannot be fetched is served from the last list saved
+    // for it instead of showing an empty page (see failOne in the .cpp for why
+    // that list is still worth showing). staleCount is how many channels came
+    // from disk in this load; staleSince is the OLDEST of those saves, in ms
+    // since epoch, 0 when none — the date the UI puts on its "not fresh" notice.
+    Q_PROPERTY(int staleCount READ staleCount NOTIFY errorChanged)
+    Q_PROPERTY(qint64 staleSince READ staleSince NOTIFY errorChanged)
 
 public:
     enum Roles {
@@ -69,6 +76,8 @@ public:
     int count() const { return m_videos.size(); }
     int failedCount() const { return m_failed; }
     QString lastError() const { return m_lastError; }
+    int staleCount() const { return m_stale; }
+    qint64 staleSince() const { return m_staleSince; }
 
     // Fetch the RSS feeds of these channel ids and show their videos merged and
     // sorted newest-first. Re-callable (replaces the current contents).
@@ -91,7 +100,16 @@ private:
 
     // Returns false when the body is not a usable Atom feed (see the .cpp): a
     // channel with zero uploads is a success, a consent/error page is not.
-    bool parseFeed(const QByteArray &xml);
+    // Parses into `out` and adds nothing to the model: the caller decides what
+    // to do with the result, because it also has to save it to the cache.
+    bool parseFeed(const QByteArray &xml, QVector<Video> *out) const;
+    void appendVideos(const QVector<Video> &vids);
+
+    // Last good list per channel, kept on disk. The path is spelled out rather
+    // than taken from QStandardPaths::AppCacheLocation — see the .cpp.
+    static QString cachePath(const QString &channelId);
+    void writeCache(const QString &channelId, const QVector<Video> &vids) const;
+    QVector<Video> readCache(const QString &channelId, qint64 *savedAt) const;
     void finishOne();
     void failOne(const QString &channelId, const QString &reason);
     void startNext(int gen);    // launch queued fetches up to the concurrency cap
@@ -105,6 +123,8 @@ private:
     QHash<QString, int> m_retries;  // per-channel retry count (transient failures)
     int m_failed = 0;               // channels given up on in this load
     QString m_lastError;            // reason shown in the UI for the last failure
+    int m_stale = 0;                // channels served from the on-disk cache
+    qint64 m_staleSince = 0;        // oldest cache used in this load (ms, 0 = none)
 };
 
 #endif // YTFEED_H

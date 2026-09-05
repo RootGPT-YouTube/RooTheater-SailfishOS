@@ -166,41 +166,66 @@ Page {
         "q=lowestQ(p);}else{q=window.__rtQPrev||'hd720';window.__rtQPrev='';}" +
         "try{p.setPlaybackQualityRange(q,q);}catch(e){}" +
         "try{p.setPlaybackQuality(q);}catch(e){}window.__rtQSet=q;};" +
-        // Frozen-picture watchdog. On this engine the video decoder can end up
-        // starved of graphic buffers at high resolution: it keeps decoding at
-        // full rate, but the frames come back too late to be painted, so Gecko
-        // drops every one of them — the picture freezes while the audio (a
-        // separate, software-decoded track) plays on, and the pipeline never
-        // recovers by itself. Measured on a POCO M4 Pro at 1080p60: the MTK
-        // decoder logged `last successful dequeue was 3491356 us ago` while
-        // droppedVideoFrames grew exactly as fast as totalVideoFrames.
-        // So: watch those two counters, and when the dropped count keeps pace
-        // with the decoded count for ~2s while the clock is still running, treat
-        // the picture as frozen and re-prime the pipeline. A hair-thin seek is
-        // enough (it flushes the decoder and its buffer queue); if that does not
-        // take, replay, and as a last resort step the quality down a notch,
-        // which also makes a relapse less likely. Recoveries are rate-limited to
-        // one per 5s and reported to QML for the journal.
-        "var WD={total:0,drop:0,bad:0,ok:0,fixAt:0,step:0};" +
+        // Frozen-picture watchdog. On this engine the video pipeline can wedge
+        // while the audio (a separate, software-decoded track) plays on, and it
+        // never recovers by itself. It wedges in two distinct shapes, and the
+        // watchdog has to know both — the second one was missed for a whole
+        // release because the detector only looked for the first:
+        //
+        //  A. decoding, painting nothing. The decoder is starved of graphic
+        //     buffers: it keeps producing at full rate but the frames come back
+        //     too late, so Gecko drops every one. Measured on a POCO M4 Pro at
+        //     1080p60, the MTK decoder logged `last successful dequeue was
+        //     3491356 us ago` while droppedVideoFrames grew exactly as fast as
+        //     totalVideoFrames.
+        //  B. producing nothing at all. Both counters stop dead while the clock
+        //     keeps running. Journal of 2026-09-04, at 360p — so this is not a
+        //     high-resolution problem: total/drop sat at 1308/276 for seconds
+        //     while currentTime advanced 40.2 → 42.6. Shape A's test (dropped
+        //     keeping pace with decoded) is FALSE here, because nothing is
+        //     decoded: the old detector read that as healthy and stood down
+        //     exactly when the picture was most stuck.
+        //
+        // So: sample both counters and the clock. Shape A is "dropped keeps pace
+        // with decoded", shape B is "clock moving, decoder producing nothing";
+        // either one, held for ~2s while not paused/seeking/buffering, means the
+        // picture is frozen. Then re-prime the pipeline: a hair-thin seek first
+        // (it flushes the decoder and its buffer queue), replay if that does not
+        // take, and as a last resort step the quality down a notch, which also
+        // makes a relapse less likely. Recoveries are rate-limited to one per 5s
+        // and reported to QML for the journal.
+        "var WD={total:0,drop:0,t:-1,bad:0,ok:0,fixAt:0,step:0};" +
         "function wdFix(v,p){var t=v.currentTime;WD.step++;" +
         "if(WD.step===1){if(p&&p.seekTo)p.seekTo(t+0.05,true);else v.currentTime=t+0.05;" +
         "return 'seek@'+t.toFixed(1);}" +
         "if(WD.step===2){if(p&&p.pauseVideo&&p.playVideo){p.pauseVideo();" +
         "setTimeout(function(){try{p.playVideo();}catch(e){}},150);return 'replay@'+t.toFixed(1);}" +
         "return 'noapi@'+t.toFixed(1);}" +
-        "WD.step=0;var cur=window.__rtQSet||'';var i=RTQ.indexOf(cur);" +
-        "if(i>=0&&i+1<RTQ.length&&p&&p.setPlaybackQualityRange){var nx=RTQ[i+1];" +
+        // Which level to step down FROM. Our own cap is the first source, but it
+        // can be empty (setQ never got an answer out of the player — seen on
+        // 2026-09-04, logged as `q=?`), which used to make this step a no-op and
+        // degrade it into a second pointless seek. Fall back to asking the player.
+        // A level above our ladder (hd1080) gives indexOf -1, and RTQ[0] is then
+        // correctly a step DOWN; a level we cannot name at all leaves quality alone
+        // rather than risk stepping up into an even heavier stream.
+        "WD.step=0;var cur=window.__rtQSet||'';" +
+        "if(!cur&&p&&p.getPlaybackQuality){try{cur=p.getPlaybackQuality()||'';}catch(e){}}" +
+        "var i=cur?RTQ.indexOf(cur):-99;" +
+        "if(i>=-1&&i+1<RTQ.length&&p&&p.setPlaybackQualityRange){var nx=RTQ[i+1];" +
         "try{p.setPlaybackQualityRange(nx,nx);}catch(e){}try{p.setPlaybackQuality(nx);}catch(e){}" +
         "window.__rtQSet=nx;return 'quality→'+nx+'@'+t.toFixed(1);}" +
         "if(p&&p.seekTo)p.seekTo(t+0.05,true);return 'seek2@'+t.toFixed(1);}" +
         "setInterval(function(){var v=document.querySelector('video');if(!v)return;" +
         "var p=document.getElementById('movie_player');" +
-        "if(v.paused||v.seeking||v.readyState<3){WD.bad=0;return;}" +
+        "if(v.paused||v.seeking||v.readyState<3){WD.bad=0;WD.t=-1;return;}" +
         "var q=null;try{q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():null;}catch(e){}" +
         "if(!q||q.totalVideoFrames===undefined)return;" +
-        "var dt=q.totalVideoFrames-WD.total,dd=q.droppedVideoFrames-WD.drop;" +
-        "WD.total=q.totalVideoFrames;WD.drop=q.droppedVideoFrames;" +
-        "if(dt>0&&dd>=dt*0.9){WD.bad++;WD.ok=0;}else{WD.bad=0;if(++WD.ok>40)WD.step=0;}" +
+        "var ct=v.currentTime;" +
+        "if(WD.t<0){WD.t=ct;WD.total=q.totalVideoFrames;WD.drop=q.droppedVideoFrames;return;}" +
+        "var dt=q.totalVideoFrames-WD.total,dd=q.droppedVideoFrames-WD.drop,dc=ct-WD.t;" +
+        "WD.total=q.totalVideoFrames;WD.drop=q.droppedVideoFrames;WD.t=ct;" +
+        "var stuck=(dt>0&&dd>=dt*0.9)||(dt===0&&dc>0.2);" +
+        "if(stuck){WD.bad++;WD.ok=0;}else{WD.bad=0;if(++WD.ok>40)WD.step=0;}" +
         "if(WD.bad<4)return;" +
         "var now=Date.now();if(now-WD.fixAt<5000)return;WD.fixAt=now;WD.bad=0;" +
         "window.__rtWdMsg=wdFix(v,p);report();" +
