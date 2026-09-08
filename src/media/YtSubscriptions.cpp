@@ -17,6 +17,8 @@
 */
 
 #include "YtSubscriptions.h"
+#include "YtFeedCache.h"
+#include "YtChannelFetch.h"
 
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -35,7 +37,6 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QDateTime>
-#include <QXmlStreamReader>
 #include <QSharedPointer>
 #include <private/qzipreader_p.h>
 #include <algorithm>
@@ -370,48 +371,92 @@ void YtSubscriptions::markAllSeen()
 
 void YtSubscriptions::refreshUnseen()
 {
+    // Already draining: let it finish. Home becomes Active again on every back
+    // navigation, and restarting the pass each time would keep re-fetching the
+    // first channels and never reach the last ones.
+    if (m_unseenActive > 0 || !m_unseenQueue.isEmpty())
+        return;
     m_unseenQueue = channelIds();
+    m_unseenRetries.clear();
+    m_unseenTotal = m_unseenQueue.size();
+    m_unseenDone = 0;
+    m_unseenOk = 0;
+    m_unseenFail = 0;
+    emit refreshChanged();
     startUnseenFetch();
+}
+
+void YtSubscriptions::finishUnseenOne()
+{
+    if (m_unseenDone < m_unseenTotal)
+        ++m_unseenDone;
+    emit refreshChanged();
+    startUnseenFetch();
+    if (m_unseenActive == 0 && m_unseenQueue.isEmpty()) {
+        // Whole batch drained: reorder so channels that gained an unseen badge
+        // float to the top (badge>0 first, then alphabetical), and let the pass
+        // read as finished (total 0 → refreshing false).
+        resortWithReset();
+        m_unseenTotal = 0;
+        m_unseenDone = 0;
+        emit refreshChanged();
+        emit feedsRefreshed();
+    }
 }
 
 void YtSubscriptions::startUnseenFetch()
 {
     const int kMax = 6;
+    const int kRetryMax  = 1;
+    // This pass runs at every visit to the Home page, so it leans on the saved
+    // list far more readily than a page the user is looking at: with the RSS
+    // feeds down, refetching 48 channels from InnerTube (~115 KB each) on every
+    // visit would cost megabytes for a badge count that barely moves.
+    const qint64 kFreshMs = 6LL * 3600 * 1000;
+
     while (m_unseenActive < kMax && !m_unseenQueue.isEmpty()) {
         const QString id = m_unseenQueue.takeFirst();
         ++m_unseenActive;
-        QNetworkRequest req(QUrl(
-            QStringLiteral("https://www.youtube.com/feeds/videos.xml?channel_id=") + id));
-        req.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
-        QNetworkReply *reply = m_nam->get(req);
-        connect(reply, &QNetworkReply::finished, this, [this, reply, id]() {
-            reply->deleteLater();
+        YtChannelFetch::start(m_nam, id, kFreshMs, this,
+                              [this, id, kRetryMax](const YtChannelFetch::Result &r) {
             --m_unseenActive;
+
+            if (r.source == YtChannelFetch::Result::Failed) {
+                if (m_unseenRetries.value(id) < kRetryMax) {
+                    m_unseenRetries[id] += 1;
+                    m_unseenQueue << id;     // one more go, at the end of the queue
+                    startUnseenFetch();
+                    return;                  // not done yet: progress must not advance
+                }
+                ++m_unseenFail;
+                qWarning("YtSubscriptions: startup pass gave up on %s — %s",
+                         qPrintable(id), qPrintable(r.error));
+                finishUnseenOne();
+                return;
+            }
+
+            ++m_unseenOk;
+            // This pass is also the feed PREFETCH: save the channel's list so it
+            // has one before it is ever opened. Without it, the first time
+            // YouTube's feed service went down a channel never visited had
+            // nothing to fall back on and showed only an error page.
+            if (r.source != YtChannelFetch::Result::Cache)
+                YtFeedCache::write(id, r.videos);
+
             const int row = indexOfChannel(id);
-            if (row >= 0 && reply->error() == QNetworkReply::NoError) {
-                // Count <entry> items published after this channel's lastSeen.
+            if (row >= 0) {
                 const qint64 since = m_subs[row].lastSeen;
                 int n = 0;
-                QXmlStreamReader xr(reply->readAll());
-                while (!xr.atEnd() && !xr.hasError()) {
-                    if (xr.readNext() == QXmlStreamReader::StartElement
-                            && xr.name() == QLatin1String("published")) {
-                        const QDateTime dt = QDateTime::fromString(xr.readElementText(), Qt::ISODate);
-                        if (dt.isValid() && dt.toMSecsSinceEpoch() > since)
-                            ++n;
-                    }
-                }
+                for (const YtVideo &v : r.videos)
+                    if (v.published > since)
+                        ++n;
                 if (n != m_subs[row].unseen) {
                     m_subs[row].unseen = n;
                     const QModelIndex mi = index(row, 0);
                     emit dataChanged(mi, mi, { UnseenRole });
                 }
             }
-            startUnseenFetch();
-            // When the whole batch has drained, reorder so channels that gained
-            // an unseen badge float to the top (badge>0 first, then alphabetical).
-            if (m_unseenActive == 0 && m_unseenQueue.isEmpty())
-                resortWithReset();
+            finishUnseenOne();
         });
     }
 }

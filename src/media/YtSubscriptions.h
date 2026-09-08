@@ -51,6 +51,19 @@ class YtSubscriptions : public QAbstractListModel
     // Subscriptions still without an avatar (or a resolved channel id): lets the
     // UI offer a "fetch the missing ones" action instead of waiting for a restart.
     Q_PROPERTY(int missingAvatars READ missingAvatars NOTIFY fillChanged)
+    // Startup feed pass (see refreshUnseen): every channel's RSS is fetched, its
+    // unseen count updated AND its video list saved to the feed cache. It is the
+    // only thing that guarantees a channel has a list before it is first opened,
+    // so the UI shows how far along it is — refreshProgress in 0..1 next to the
+    // "YouTube RSS" header on Home.
+    Q_PROPERTY(bool refreshing READ refreshing NOTIFY refreshChanged)
+    Q_PROPERTY(qreal refreshProgress READ refreshProgress NOTIFY refreshChanged)
+    // How the last finished pass went: channels answered vs channels on which
+    // BOTH sources failed (the RSS feed and the InnerTube fallback). All of them
+    // failing is the shape of a YouTube-side outage, and that is what the Home
+    // page tells the user about when feedsRefreshed() fires.
+    Q_PROPERTY(int refreshOk READ refreshOk NOTIFY refreshChanged)
+    Q_PROPERTY(int refreshFailed READ refreshFailed NOTIFY refreshChanged)
 
 public:
     enum Roles {
@@ -73,6 +86,11 @@ public:
     bool filling() const { return m_fillTotal > 0; }
     qreal fillProgress() const { return m_fillTotal > 0 ? qreal(m_fillDone) / m_fillTotal : 0.0; }
     int missingAvatars() const;
+    bool refreshing() const { return m_unseenTotal > 0; }
+    qreal refreshProgress() const
+    { return m_unseenTotal > 0 ? qreal(m_unseenDone) / m_unseenTotal : 0.0; }
+    int refreshOk() const { return m_unseenOk; }
+    int refreshFailed() const { return m_unseenFail; }
 
     // Queue every subscription that still misses an avatar/channel id and start
     // draining. Runs at startup, after an import, and on demand from the UI.
@@ -95,9 +113,12 @@ public:
     Q_INVOKABLE bool contains(const QString &channelId) const;
 
     // ── "unseen" badges ──────────────────────────────────────────────────────
-    // Fetch each channel's RSS and set its unseen count = videos published after
-    // the channel's lastSeen timestamp. Bounded concurrency; updates rows as they
-    // arrive. Call on home/app activation.
+    // Fetch every channel's RSS: set its unseen count = videos published after
+    // the channel's lastSeen timestamp, and save its video list to the feed cache
+    // (YtFeedCache) so the channel is never left without a list when YouTube's
+    // feed service goes down. Bounded concurrency; updates rows as they arrive,
+    // reports progress through refreshing/refreshProgress. Call on home/app
+    // activation — a pass already running is left to finish.
     Q_INVOKABLE void refreshUnseen();
     // Mark a channel (or a set, or all) as seen: lastSeen = now, unseen = 0.
     Q_INVOKABLE void markSeen(const QString &channelId);
@@ -124,6 +145,10 @@ signals:
     void busyChanged();
     void fillChanged();
     void fillFinished();
+    void refreshChanged();
+    // The startup feed pass has drained: unseen counts settled and every channel
+    // that answered now has a saved list.
+    void feedsRefreshed();
     void added(const QString &name);
     void error(const QString &message);
 
@@ -171,9 +196,11 @@ private:
     void processFillQueue();
     void startFillJob(const FillJob &job);
 
-    // Unseen-count refresh: fetch channel RSS feeds (bounded concurrency) and
-    // count videos newer than each channel's lastSeen.
+    // Unseen-count refresh + feed prefetch: fetch channel RSS feeds (bounded
+    // concurrency), count videos newer than each channel's lastSeen and cache
+    // the list. finishUnseenOne() advances the progress and closes the pass.
     void startUnseenFetch();
+    void finishUnseenOne();
 
     QVector<Sub> m_subs;
     QNetworkAccessManager *m_nam = nullptr;
@@ -187,6 +214,11 @@ private:
 
     QStringList m_unseenQueue;  // channel ids awaiting an unseen-count fetch
     int m_unseenActive = 0;     // in-flight unseen fetches (bounded)
+    QHash<QString, int> m_unseenRetries;  // per-channel retry count in this pass
+    int m_unseenTotal = 0;      // channels in the current pass (0 = not running)
+    int m_unseenDone = 0;       // channels finished in the current pass
+    int m_unseenOk = 0;         // channels that answered in the last pass
+    int m_unseenFail = 0;       // channels no source could serve in the last pass
 };
 
 #endif // YTSUBSCRIPTIONS_H

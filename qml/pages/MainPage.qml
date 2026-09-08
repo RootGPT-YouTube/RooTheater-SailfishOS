@@ -72,9 +72,20 @@ Page {
     // channels' RSS feeds → gated by the internet permission).
     onStatusChanged: if (status === PageStatus.Active && page.internetAllowed)
                          ytSubs.refreshUnseen()
+    // The startup pass is also where an outage becomes visible: when it ends with
+    // every channel unserved, both sources are down (see YtChannelFetch) and the
+    // lists on screen are whatever was saved. Say it plainly, once per run — the
+    // user asked to be told rather than left to guess from an empty channel.
+    property bool ytOutageTold: false
     Connections {
         target: ytSubs
         onFillFinished: if (page.internetAllowed) ytSubs.refreshUnseen()   // after an import completes
+        onFeedsRefreshed: {
+            if (!page.ytOutageTold && ytSubs.refreshFailed > 0 && ytSubs.refreshOk === 0) {
+                page.ytOutageTold = true
+                ytOutage.visible = true
+            }
+        }
     }
 
     RemorsePopup { id: ytRemorse }
@@ -167,11 +178,17 @@ Page {
                 height: Theme.itemSizeSmall
                 visible: ytSubs.count > 0 && page.internetAllowed
 
+                // While the startup pass runs, the header carries its progress:
+                // that pass fetches every channel's feed — unseen badges AND the
+                // saved list each channel falls back on when YouTube stops
+                // serving its feeds — so it is worth being able to watch it end.
                 SectionHeader {
                     anchors.verticalCenter: parent.verticalCenter
                     text: page.ytSelectMode
                           ? qsTr("%1 selected").arg(page.ytSelectedCount)
-                          : qsTr("YouTube RSS")
+                          : ytSubs.refreshing
+                            ? qsTr("YouTube RSS — %1%").arg(Math.round(ytSubs.refreshProgress * 100))
+                            : qsTr("YouTube RSS")
                 }
                 // Selection-mode actions: mark selected as seen / delete selected.
                 Row {
@@ -383,6 +400,61 @@ Page {
                     }
                 }
                 Item { width: 1; height: Theme.paddingMedium }
+            }
+        }
+    }
+
+    // ── "YouTube is not answering" notice ─────────────────────────────────────
+    // Same centred-panel shape as the channel menu above (the Silica Dialog would
+    // push a page onto the stack for a message that needs one tap to dismiss).
+    Item {
+        id: ytOutage
+        anchors.fill: parent
+        visible: false
+
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(0, 0, 0, 0.6)
+            MouseArea { anchors.fill: parent; onClicked: ytOutage.visible = false }
+        }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.round(page.width * 0.82)
+            height: outageCol.height
+            radius: Theme.paddingMedium
+            color: Theme.overlayBackgroundColor
+
+            Column {
+                id: outageCol
+                width: parent.width
+                spacing: Theme.paddingMedium
+
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    topPadding: Theme.paddingLarge
+                    text: qsTr("YouTube is not answering")
+                    wrapMode: Text.WordWrap
+                    color: Theme.highlightColor
+                }
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    text: qsTr("None of the %n channel(s) could be updated: the trouble is on YouTube's side, not with your connection. The saved lists are still shown and their videos still play. Try again later.", "", ytSubs.refreshFailed)
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.secondaryHighlightColor
+                }
+                BackgroundItem {
+                    width: outageCol.width
+                    onClicked: ytOutage.visible = false
+                    Label {
+                        anchors.centerIn: parent
+                        text: qsTr("OK")
+                        color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                    }
+                }
             }
         }
     }

@@ -26,6 +26,8 @@
 #include <QDateTime>
 #include <QHash>
 
+#include "YtFeedCache.h"
+
 class QNetworkAccessManager;
 class QNetworkReply;
 
@@ -79,9 +81,11 @@ public:
     int staleCount() const { return m_stale; }
     qint64 staleSince() const { return m_staleSince; }
 
-    // Fetch the RSS feeds of these channel ids and show their videos merged and
-    // sorted newest-first. Re-callable (replaces the current contents).
-    Q_INVOKABLE void loadChannels(const QStringList &channelIds);
+    // Fetch these channels and show their videos merged and sorted newest-first.
+    // Re-callable (replaces the current contents). `force` is the user asking for
+    // it — a pull-to-refresh — and goes past the saved list even when it is
+    // recent; the automatic load takes the cheap route (see startNext).
+    Q_INVOKABLE void loadChannels(const QStringList &channelIds, bool force = false);
 
 signals:
     void loadingChanged();
@@ -89,35 +93,19 @@ signals:
     void errorChanged();
 
 private:
-    struct Video {
-        QString videoId;
-        QString title;
-        QString thumbnail;
-        QString channelId;
-        QString channelName;
-        qint64 published = 0;   // ms since epoch
-    };
-
-    // Returns false when the body is not a usable Atom feed (see the .cpp): a
-    // channel with zero uploads is a success, a consent/error page is not.
-    // Parses into `out` and adds nothing to the model: the caller decides what
-    // to do with the result, because it also has to save it to the cache.
-    bool parseFeed(const QByteArray &xml, QVector<Video> *out) const;
-    void appendVideos(const QVector<Video> &vids);
-
-    // Last good list per channel, kept on disk. The path is spelled out rather
-    // than taken from QStandardPaths::AppCacheLocation — see the .cpp.
-    static QString cachePath(const QString &channelId);
-    void writeCache(const QString &channelId, const QVector<Video> &vids) const;
-    QVector<Video> readCache(const QString &channelId, qint64 *savedAt) const;
+    // Parsing and the on-disk "last good list" per channel live in YtFeedCache:
+    // YtSubscriptions fills the same cache during its startup unseen pass, so a
+    // channel has a list saved for it before it is ever opened.
+    void appendVideos(const QVector<YtVideo> &vids);
     void finishOne();
     void failOne(const QString &channelId, const QString &reason);
     void startNext(int gen);    // launch queued fetches up to the concurrency cap
 
-    QVector<Video> m_videos;
+    QVector<YtVideo> m_videos;
     QNetworkAccessManager *m_nam = nullptr;
     int m_pending = 0;          // feeds not yet parsed (for the loading flag)
     int m_generation = 0;       // bumped on each loadChannels → drop stale replies
+    bool m_force = false;       // this load was asked for by hand: no cache shortcut
     QStringList m_idQueue;      // channel ids still to fetch
     int m_active = 0;           // in-flight requests (bounded, see startNext)
     QHash<QString, int> m_retries;  // per-channel retry count (transient failures)

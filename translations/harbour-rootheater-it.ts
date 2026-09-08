@@ -529,6 +529,25 @@
         <source>Options</source>
         <translation>Opzioni</translation>
     </message>
+    <message>
+        <source>YouTube RSS — %1%</source>
+        <translation>YouTube RSS — %1%</translation>
+    </message>
+    <message>
+        <source>YouTube is not answering</source>
+        <translation>YouTube non risponde</translation>
+    </message>
+    <message numerus="yes">
+        <source>None of the %n channel(s) could be updated: the trouble is on YouTube&apos;s side, not with your connection. The saved lists are still shown and their videos still play. Try again later.</source>
+        <translation>
+            <numerusform>Il canale non si è potuto aggiornare: il guasto è dalla parte di YouTube, non della tua connessione. Gli elenchi salvati restano visibili e i loro video si vedono lo stesso. Riprova più tardi.</numerusform>
+            <numerusform>Nessuno dei %n canali si è potuto aggiornare: il guasto è dalla parte di YouTube, non della tua connessione. Gli elenchi salvati restano visibili e i loro video si vedono lo stesso. Riprova più tardi.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
 </context>
 <context>
     <name>MusicAlbumsPage</name>
@@ -1030,6 +1049,21 @@ Trascina verso il basso per riprovare.</translation>
     </message>
 </context>
 <context>
+    <name>YtChannelFetch</name>
+    <message>
+        <source>HTTP %1 — %2</source>
+        <translation>HTTP %1 — %2</translation>
+    </message>
+    <message>
+        <source>invalid response (HTTP %1)</source>
+        <translation>risposta non valida (HTTP %1)</translation>
+    </message>
+    <message>
+        <source>unreadable answer (HTTP %1)</source>
+        <translation>risposta illeggibile (HTTP %1)</translation>
+    </message>
+</context>
+<context>
     <name>YtChannelPage</name>
     <message>
         <source>%1 min ago</source>
@@ -1080,17 +1114,6 @@ Trascina verso il basso per riprovare.</translation>
     <message>
         <source>YouTube is not serving its video feeds right now. Showing the last saved list — the videos still play.</source>
         <translation>Al momento YouTube non sta servendo i feed dei video. Questo è l&apos;ultimo elenco salvato — i video si vedono lo stesso.</translation>
-    </message>
-</context>
-<context>
-    <name>YtFeed</name>
-    <message>
-        <source>HTTP %1 — %2</source>
-        <translation>HTTP %1 — %2</translation>
-    </message>
-    <message>
-        <source>invalid response (HTTP %1, %2 bytes)</source>
-        <translation>risposta non valida (HTTP %1, %2 byte)</translation>
     </message>
 </context>
 <context>

@@ -15,7 +15,7 @@ TARGET = harbour-rootheater
 # and on the app template truncates it to major.minor when expanded.
 # Displayed in-app (AboutPage) via APP_VERSION. RPM Version stays numeric (0.9.0
 # in the spec/yaml) since RPM forbids '-'; the "-beta" label lives in APP_VERSION.
-RT_APP_VERSION = 1.3.0
+RT_APP_VERSION = 1.4.0
 # VERSION must be a clean numeric for qmake (it's reserved / gets parsed); keep it
 # separate from RT_APP_VERSION so the "-beta" suffix doesn't reach it.
 VERSION = 1.3.0
@@ -46,6 +46,8 @@ SOURCES += src/harbour-rootheater.cpp \
     src/media/ShareHandler.cpp \
     src/media/YtSubscriptions.cpp \
     src/media/YtFeed.cpp \
+    src/media/YtFeedCache.cpp \
+    src/media/YtChannelFetch.cpp \
     src/media/YtSearch.cpp
 
 HEADERS += src/media/MediaProbe.h \
@@ -64,6 +66,8 @@ HEADERS += src/media/MediaProbe.h \
     src/media/CoverState.h \
     src/media/YtSubscriptions.h \
     src/media/YtFeed.h \
+    src/media/YtFeedCache.h \
+    src/media/YtChannelFetch.h \
     src/media/YtSearch.h
 
 # License compliance: the GPLv3 text (and, as bundled libs land, their

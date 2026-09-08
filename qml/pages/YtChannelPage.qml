@@ -79,7 +79,7 @@ Page {
             }
             MenuItem {
                 text: qsTr("Reload")
-                onClicked: feed.loadChannels([ page.channelId ])
+                onClicked: feed.loadChannels([ page.channelId ], true)
             }
         }
 

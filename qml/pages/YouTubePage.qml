@@ -4,7 +4,9 @@ import Sailfish.Pickers 1.0
 import RooTheater.Media 1.0
 
 // The YouTube "subscriptions" view (100% keyless / zero Data API quota): the
-// recent videos of every followed channel, merged from their public RSS feeds.
+// recent videos of every followed channel, merged from their public RSS feeds —
+// or, while that service is down, from the web client's own endpoint and the
+// lists saved on disk (see YtChannelFetch).
 // Videos and channels are found via in-app search (YtSearchPage — channels are
 // subscribed right from the results), and the subscription list can be
 // imported/exported. Playback opens in the in-app player (YtPlayerPage).
@@ -20,7 +22,8 @@ Page {
     // The aggregated feed of all subscribed channels.
     YtFeed { id: feed }
 
-    function reloadFeed() { feed.loadChannels(ytSubs.channelIds()) }
+    // force: the user asked for fresh, so skip the saved-list shortcut.
+    function reloadFeed(force) { feed.loadChannels(ytSubs.channelIds(), force === true) }
 
     Component.onCompleted: reloadFeed()
 
@@ -124,7 +127,7 @@ Page {
             MenuItem {
                 text: qsTr("Reload")
                 enabled: ytSubs.count > 0
-                onClicked: page.reloadFeed()
+                onClicked: page.reloadFeed(true)
             }
         }
 
