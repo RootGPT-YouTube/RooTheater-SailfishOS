@@ -3,6 +3,7 @@ import Sailfish.Silica 1.0
 import Sailfish.WebView 1.0
 import Sailfish.WebEngine 1.0
 import Nemo.KeepAlive 1.2
+import Nemo.Configuration 1.0
 
 // In-app YouTube playback: the official m.youtube.com watch page in the
 // Sailfish WebView (same Gecko engine as the system browser, so same legal,
@@ -93,9 +94,92 @@ Page {
         "'total='+(q.totalVideoFrames===undefined?'NA':q.totalVideoFrames)," +
         "'drop='+(q.droppedVideoFrames===undefined?'NA':q.droppedVideoFrames)," +
         "'buf='+(v.buffered.length?v.buffered.end(v.buffered.length-1).toFixed(1):'-')," +
-        "'q='+(window.__rtQSet||'?'),'err='+(v.error?v.error.code:0)," +
-        "(window.__rtWdMsg?'wd='+window.__rtWdMsg:'')].join(' ');" +
+        "'buf2='+(v.buffered.length?v.buffered.length:0)," +
+        "'hr='+headroom(v),'gaps='+gapInfo(v)," +
+        // `q` is only what WE asked the player for; `qa` is what it reports as
+        // actually playing. Keeping them apart matters: on 2026-09-20 the trace
+        // showed q=hd720 with size=640x360 for eight seconds, i.e. the cap says one
+        // thing and the picture is another — with `q` alone that looks like a 720p
+        // stream stuttering, which would send the diagnosis the wrong way.
+        "'q='+(window.__rtQSet||'?'),'qa='+qActual()," +
+        // Our ceiling, next to what is actually playing: with a range instead of a
+        // nail the two are meant to differ, and `qa` sitting BELOW `cap` is ABR doing
+        // its job on a link that dipped — the behaviour the nail used to forbid.
+        "'cap='+((typeof RTQ!=='undefined'&&RTQ[window.__rtCapIdx||0])||'?')," +
+        "'ur='+(window.__rtUrTot||0)," +
+        "'err='+(v.error?v.error.code:0)," +
+        "(window.__rtWdMsg?'wd='+window.__rtWdMsg:'')," +
+        "(window.__rtEv?'ev='+window.__rtEv:'')].join(' ');" +
         "}catch(e){return 'diagerr';}}" +
+        // Buffer headroom: seconds of video ready AHEAD of the playhead, and the
+        // number the stutter diagnosis turns on — the field report is "it stalls
+        // when it grazes the buffering", i.e. the picture starves of DATA, not of
+        // graphic buffers. -1 = nothing buffered. `buf2` counts the buffered
+        // ranges: more than one means a gap, which starves the picture just the
+        // same even when the far end looks comfortable.
+        // ⚠️ Measure to the end of the range the PLAYHEAD IS IN, not to the end of
+        // the last range. MSE buffers are not one contiguous block: on 2026-09-20
+        // this trace showed buf2=2 nine seconds into a video, so the far end sat
+        // BEYOND a gap and the first version of this function reported hr=24.6 when
+        // the picture was actually a few seconds from starving. That is the very
+        // case the field report describes ("it stalls when it grazes the
+        // buffering"), so getting it wrong would have hidden the symptom we are
+        // hunting. 0 = the playhead is in no range at all, i.e. starving now.
+        "function headroom(v){try{var b=v.buffered;if(!b.length)return -1;" +
+        "var t=v.currentTime;" +
+        "for(var i=0;i<b.length;i++){" +
+        "if(t>=b.start(i)-0.1&&t<=b.end(i))return +(b.end(i)-t).toFixed(1);}" +
+        "return 0;}catch(e){return -1;}}" +
+        "function qActual(){try{var p=document.getElementById('movie_player');" +
+        "if(p&&p.getPlaybackQuality)return p.getPlaybackQuality()||'?';}catch(e){}return '?';}" +
+        // The shape of the holes, which is what names the cause. On 2026-09-20 a
+        // stutter was caught with buf2=46: the MSE buffer had shattered into 46
+        // ranges while the network was fine (buf was still growing, 49s → 66s
+        // ahead), and the decoder starved at the gaps — total collapsed from +72
+        // frames per tick to +11 and readyState fell to 2. Whether the gaps are
+        // hairline (segments that fail to coalesce, a timestamp-rounding problem)
+        // or wide (data actually thrown away, i.e. eviction) points at completely
+        // different levers, and the two look identical in a count. Reported as
+        // <size>@<where>, for the first three gaps at or after the playhead.
+        "function gapInfo(v){try{var b=v.buffered;if(b.length<2)return '-';" +
+        "var t=v.currentTime;var o=[];" +
+        "for(var i=0;i<b.length-1&&o.length<3;i++){if(b.end(i)<t-1)continue;" +
+        "o.push((+(b.start(i+1)-b.end(i)).toFixed(3))+'@'+b.end(i).toFixed(1));}" +
+        "return o.length?o.join(','):'-';}catch(e){return '?';}}" +
+        // Flight recorder. The stutter is rare — hours or days apart — so neither
+        // obvious logging shape works: a line every 2s would fill the journal for
+        // days to catch one event, and logging only AT the event shows the instant
+        // without the run-up, which is the part that separates a starving buffer
+        // from a wedged pipeline. So keep the last 30 samples (one per probe tick,
+        // ~60s) in the page and let the event itself flush them to the journal.
+        // Silent until something happens: nobody has to catch the fault in the act.
+        "var RB=[];var T0=Date.now();var DUMP={at:0};" +
+        "function rbPush(){try{RB.push('+'+((Date.now()-T0)/1000).toFixed(0)+'s '+diag());" +
+        "if(RB.length>30)RB.shift();}catch(e){}}" +
+        // One dump per 30s at most, window emptied after a flush so two dumps never
+        // repeat samples. The event line itself is logged live regardless.
+        "function rbDump(tag){var now=Date.now();if(DUMP.at&&now-DUMP.at<30000)return;" +
+        "DUMP.at=now;try{document.title='RTDUMP:'+tag+'|'+RB.join(';');}catch(e){}RB=[];}" +
+        // Underrun probe — OBSERVATION ONLY. `waiting`/`stalled` fire exactly when
+        // the picture runs out of data, the moment the field report describes, and
+        // the watchdog below is deliberately blind to it (it stands down on
+        // readyState<3, rightly: that is buffering, not a wedged decoder). Nothing
+        // here touches the quality: an earlier attempt to also CURE the underrun by
+        // widening the quality range crashed the app on this device (SIGSEGV on
+        // Gecko's MediaPDecoder thread, 2026-09-20, twice out of two starts), so
+        // measuring and curing are kept strictly apart until the trace says what
+        // the cure should be.
+        "window.__rtUrTot=0;" +
+        // A `waiting` before playback has ever begun is not a stutter, it is the
+        // player fetching its first bytes — seen on 2026-09-20 as wait@0.0 with
+        // rs=0, and it burned the one-dump-per-30s budget at the very moment a real
+        // event might have followed. Same for one that lands while seeking. So the
+        // counter only opens after the first `playing`.
+        "function onWait(){var v=document.querySelector('video');if(!v)return;" +
+        "if(!window.__rtStarted||v.seeking)return;" +
+        "window.__rtUrTot++;window.__rtEv='wait@'+(v.currentTime||0).toFixed(1)" +
+        "+' hr='+headroom(v);report();rbPush();rbDump('underrun');" +
+        "setTimeout(function(){window.__rtEv='';},3000);}" +
         // orientation reporter (portrait-safe: landscape only when proven wider)
         "function report(){var fe=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;" +
         "if(!fe){document.title='RTFS:0|'+diag();return;}" +
@@ -135,15 +219,31 @@ Page {
         // and re-apply on every "playing" (an ad and the content that follows are
         // separate media with separate ladders).
         "var RTQ=['hd720','large','medium','small','tiny'];" +
-        "window.__rtQSet='';" +
+        "window.__rtQSet='';window.__rtCapIdx=0;" +
+        "function avQ(p){try{return p.getAvailableQualityLevels()||[];}catch(e){return [];}}" +
+        // Apply the ceiling as a RANGE (floor..ceiling), never min==max. This is the
+        // whole point: 1.4.0 called setPlaybackQualityRange(X,X), which does not cap
+        // the quality but NAILS it, and the same stickiness that made the cap
+        // survive ABR also took away the one thing that keeps the picture alive on a
+        // link that moves — dropping a rung when the bandwidth drops.
+        //
+        // Measured on the POCO on 2026-09-20, same video, same wifi, minutes apart:
+        // 611 kbit/s while the picture was stalled with hr=0, and 3003 kbit/s while
+        // it played clean and the buffer grew 1.6x faster than realtime. The stream
+        // itself is ~1.9 Mbit/s. So the link swings by a factor of five, which is
+        // exactly the case ABR exists for, and the nail forbade it. It is also why
+        // lowering the quality BY HAND cured the stutter: the viewer was doing what
+        // the player was not allowed to do.
+        "function applyCap(p){var av=avQ(p);if(!av.length)return false;" +
+        "var top='';for(var i=window.__rtCapIdx;i<RTQ.length;i++){" +
+        "if(av.indexOf(RTQ[i])>=0){top=RTQ[i];break;}}" +
+        "if(!top)return false;var flo=lowestQ(p);" +
+        "try{p.setPlaybackQualityRange(flo,top);}catch(e){}" +
+        "try{p.setPlaybackQuality(top);}catch(e){}" +
+        "window.__rtQSet=top;return true;}" +
         "function setQ(){var p=document.getElementById('movie_player');" +
         "if(!p||typeof p.getAvailableQualityLevels!=='function')return false;" +
-        "var av=[];try{av=p.getAvailableQualityLevels()||[];}catch(e){return false;}" +
-        "if(!av.length)return false;" +
-        "for(var i=0;i<RTQ.length;i++){if(av.indexOf(RTQ[i])<0)continue;" +
-        "try{p.setPlaybackQualityRange(RTQ[i],RTQ[i]);}catch(e){}" +
-        "try{p.setPlaybackQuality(RTQ[i]);}catch(e){}" +
-        "window.__rtQSet=RTQ[i];return true;}return false;}" +
+        "return applyCap(p);}" +
         "var qn=0;var qk=setInterval(function(){qn++;if(setQ()||qn>60)clearInterval(qk);},500);" +
         // Background economy. Keeping the WebView alive is what lets the audio
         // play on with the app minimised or the display off (see the `active`
@@ -158,14 +258,21 @@ Page {
         // so a quality the user picked by hand survives the round trip.
         "function lowestQ(p){try{var av=p.getAvailableQualityLevels()||[];" +
         "for(var i=RTQ.length-1;i>=0;i--)if(av.indexOf(RTQ[i])>=0)return RTQ[i];}catch(e){}return 'tiny';}" +
-        "window.__rtBg=function(on){var p=document.getElementById('movie_player');" +
-        "if(!p||typeof p.setPlaybackQualityRange!=='function')return;var q;" +
-        "if(on){if(!window.__rtQPrev){var cur='';" +
-        "try{cur=p.getPlaybackQuality();}catch(e){}" +
-        "window.__rtQPrev=cur||window.__rtQSet||'hd720';}" +
-        "q=lowestQ(p);}else{q=window.__rtQPrev||'hd720';window.__rtQPrev='';}" +
+        // __rtFg also tells the watchdog whether anyone is looking: see its gate.
+        "window.__rtFg=1;" +
+        "window.__rtBg=function(on){window.__rtFg=on?0:1;" +
+        "var p=document.getElementById('movie_player');" +
+        "if(!p||typeof p.setPlaybackQualityRange!=='function')return;" +
+        // Going out, a NAILED lowest level is the point rather than a defect: nobody
+        // is watching and we want the cheapest stream, full stop. Coming back, the
+        // stream is handed to applyCap so the restored level is a range again and ABR
+        // keeps its freedom — restoring a nail is what let a stall outlive the return
+        // to the foreground. What survives the round trip is our ceiling, not the
+        // exact level: inside the range the player picks for itself anyway.
+        "if(on){var q=lowestQ(p);" +
         "try{p.setPlaybackQualityRange(q,q);}catch(e){}" +
-        "try{p.setPlaybackQuality(q);}catch(e){}window.__rtQSet=q;};" +
+        "try{p.setPlaybackQuality(q);}catch(e){}window.__rtQSet=q;return;}" +
+        "applyCap(p);};" +
         // Frozen-picture watchdog. On this engine the video pipeline can wedge
         // while the audio (a separate, software-decoded track) plays on, and it
         // never recovers by itself. It wedges in two distinct shapes, and the
@@ -201,23 +308,28 @@ Page {
         "if(WD.step===2){if(p&&p.pauseVideo&&p.playVideo){p.pauseVideo();" +
         "setTimeout(function(){try{p.playVideo();}catch(e){}},150);return 'replay@'+t.toFixed(1);}" +
         "return 'noapi@'+t.toFixed(1);}" +
-        // Which level to step down FROM. Our own cap is the first source, but it
-        // can be empty (setQ never got an answer out of the player — seen on
-        // 2026-09-04, logged as `q=?`), which used to make this step a no-op and
-        // degrade it into a second pointless seek. Fall back to asking the player.
-        // A level above our ladder (hd1080) gives indexOf -1, and RTQ[0] is then
-        // correctly a step DOWN; a level we cannot name at all leaves quality alone
-        // rather than risk stepping up into an even heavier stream.
-        "WD.step=0;var cur=window.__rtQSet||'';" +
-        "if(!cur&&p&&p.getPlaybackQuality){try{cur=p.getPlaybackQuality()||'';}catch(e){}}" +
-        "var i=cur?RTQ.indexOf(cur):-99;" +
-        "if(i>=-1&&i+1<RTQ.length&&p&&p.setPlaybackQualityRange){var nx=RTQ[i+1];" +
-        "try{p.setPlaybackQualityRange(nx,nx);}catch(e){}try{p.setPlaybackQuality(nx);}catch(e){}" +
-        "window.__rtQSet=nx;return 'quality→'+nx+'@'+t.toFixed(1);}" +
+        // Last resort: one notch off the CEILING, which also makes a relapse less
+        // likely. It has to move the ceiling rather than nail a level, or it would
+        // undo the range the fix above is built on. The ceiling is our own state, so
+        // the old tangle of reading the level back out of the player is gone, and
+        // with it the `q=?` case that quietly degraded this step into a second
+        // pointless seek (journal of 2026-09-04).
+        "WD.step=0;" +
+        "if(window.__rtCapIdx+1<RTQ.length){window.__rtCapIdx++;" +
+        "if(p)applyCap(p);return 'capdown→'+RTQ[window.__rtCapIdx]+'@'+t.toFixed(1);}" +
         "if(p&&p.seekTo)p.seekTo(t+0.05,true);return 'seek2@'+t.toFixed(1);}" +
         "setInterval(function(){var v=document.querySelector('video');if(!v)return;" +
         "var p=document.getElementById('movie_player');" +
-        "if(v.paused||v.seeking||v.readyState<3){WD.bad=0;WD.t=-1;return;}" +
+        // Stand down when there is nothing on screen to fix. In the background the
+        // video is deliberately nailed to 144p for nobody, while both cures — a seek
+        // and a pause/play — land squarely on the AUDIO the listener is hearing.
+        // Worse, this engine suspends background video by itself
+        // (media.suspend-bkgnd-video.* exists in libxul here), which looks exactly
+        // like shape B: the watchdog was "reviving" a deliberate battery
+        // optimisation. The journal of 2026-09-18 holds two such episodes, both at
+        // 256x144, and in both the 273 dropped frames of shape A appear in the
+        // sample AFTER our own seek — the cure manufacturing the symptom.
+        "if(!window.__rtFg||v.paused||v.seeking||v.readyState<3){WD.bad=0;WD.t=-1;return;}" +
         "var q=null;try{q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():null;}catch(e){}" +
         "if(!q||q.totalVideoFrames===undefined)return;" +
         "var ct=v.currentTime;" +
@@ -228,13 +340,14 @@ Page {
         "if(stuck){WD.bad++;WD.ok=0;}else{WD.bad=0;if(++WD.ok>40)WD.step=0;}" +
         "if(WD.bad<4)return;" +
         "var now=Date.now();if(now-WD.fixAt<5000)return;WD.fixAt=now;WD.bad=0;" +
-        "window.__rtWdMsg=wdFix(v,p);report();" +
+        "window.__rtWdMsg=wdFix(v,p);report();rbPush();rbDump('wd');" +
         "setTimeout(function(){window.__rtWdMsg='';},4000);" +
         "},500);" +
         // re-report when real dimensions arrive (metadata / resize / playback)
         "function hookV(v){if(!v||v.__rtV)return;v.__rtV=1;" +
         "['loadedmetadata','resize','playing'].forEach(function(e){v.addEventListener(e,report);});" +
-        "v.addEventListener('playing',function(){setTimeout(setQ,600);});}" +
+        "['waiting','stalled'].forEach(function(e){v.addEventListener(e,onWait);});" +
+        "v.addEventListener('playing',function(){window.__rtStarted=1;setTimeout(setQ,600);});}" +
         // Enter fullscreen via requestFullscreen (a direct API call — works
         // programmatically; a synthetic .click() on YouTube's button is ignored as
         // untrusted). Target YouTube's MOBILE player container #player-container-id
@@ -256,6 +369,14 @@ Page {
         // change, so this is cheap; it flips the page to landscape the moment the
         // real dimensions are known (and handles ad→content aspect switches).
         "setInterval(function(){var fe=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;if(fe)report();},600);" +
+        // Continuous probe (2s), two jobs in one timer. It feeds the flight recorder
+        // so a whole viewing session can be read back after the fact — the old probe
+        // only spoke inside a ±8s window around a watchdog intervention, which is
+        // precisely why a steady stutter left no trace. And it re-hooks the video
+        // element, which YouTube swaps when an ad gives way to the content: the
+        // fullscreen starter above hooks it once and then clears itself, so without
+        // this the underrun listeners would die with the first element.
+        "setInterval(function(){hookV(document.querySelector('video'));report();rbPush();},2000);" +
         "})()"
 
     // Keep the display on while watching. The video plays inside the WebView, so
@@ -265,6 +386,27 @@ Page {
     DisplayBlanking {
         preventBlanking: page.ready && page.status === PageStatus.Active
                          && Qt.application.active
+    }
+
+    // Full-session diagnostics for the journal, off by default (a line every two
+    // seconds is noise unless someone is reading it). The flight-recorder dumps
+    // below do NOT depend on this: they fire on their own at every event.
+    //   dconf write /apps/harbour-rootheater/yt/diag true
+    ConfigurationValue {
+        id: ytDiag
+        key: "/apps/harbour-rootheater/yt/diag"
+        defaultValue: false
+    }
+
+    // Serve H.264 instead of VP9 (see Component.onCompleted). ON unless the viewer
+    // turns it off in Options, so the sense of the test is "not switched off"
+    // rather than "switched on" — and it is written against both false and "false"
+    // because dconf hands these back as strings here, as PermissionSwitch guards
+    // for too.
+    ConfigurationValue {
+        id: ytForceH264
+        key: "/apps/harbour-rootheater/yt/forceH264"
+        defaultValue: true
     }
 
     Component.onCompleted: {
@@ -279,6 +421,33 @@ Page {
         // Let the YouTube player's fullscreen button actually go fullscreen.
         WebEngineSettings.setPreference("full-screen-api.enabled", true)
         WebEngineSettings.setPreference("full-screen-api.allow-trusted-requests-only", false)
+        // Codec choice: turning WebM off in MSE makes YouTube serve H.264/mp4, which
+        // lands on a DIFFERENT vendor component (c2.mtk.avc.decoder instead of
+        // c2.mtk.vp9.decoder). Reason to try it: on 2026-09-20 the trace caught the
+        // picture stalling with readyState=2 — Gecko announcing "not enough data",
+        // YouTube showing its spinner — while 39 seconds of CONTIGUOUS video sat in
+        // the buffer (buf2=1, gaps=-). The data is there and the decoder is not
+        // delivering, and the same hardware path took a SIGSEGV that morning. The
+        // 25-30% extra bitrate H.264 costs would matter if the buffer were starving;
+        // the measurement says it is not.
+        //
+        // Set HERE and not on the page that lists the videos: a video can be opened
+        // from the Home grid through YtChannelPage, so that page is not on every
+        // path. Here is early enough — this pref is read when the watch page's JS
+        // probes MSE support, which is hundreds of milliseconds later, after the
+        // document has come over the network. (The worry about children completing
+        // before their parent is real, but it only bites prefs read at engine or
+        // compositor init, not this one.)
+        //
+        // On by default; the switch lives in Options → YouTube.
+        if (ytForceH264.value !== false && ytForceH264.value !== "false") {
+            WebEngineSettings.setPreference("media.mediasource.webm.enabled", false)
+            WebEngineSettings.setPreference("media.mediasource.vp9.enabled", false)
+            console.log("[RooTheater] YT codec: WebM/VP9 off in MSE → expecting H.264")
+        } else {
+            console.log("[RooTheater] YT codec: default (VP9), forceH264="
+                        + ytForceH264.value)
+        }
     }
 
     WebView {
@@ -330,6 +499,25 @@ Page {
         // Fullscreen state/orientation pushed from the page via document.title.
         onTitleChanged: {
             var t = title
+            // Flight-recorder flush: a single title change carrying the ~60s that
+            // led up to an underrun or a watchdog recovery, oldest sample first.
+            // This is what makes a stutter that happens once in hours or days
+            // legible after the fact, without anyone watching when it lands.
+            if (t.indexOf("RTDUMP:") === 0) {
+                var db = t.indexOf("|")
+                var tag = t.substring(7, db < 0 ? t.length : db)
+                var rows = db < 0 ? [] : t.substring(db + 1).split(";")
+                console.log("[RooTheater] YT window (" + tag + "): "
+                            + rows.length + " samples before the event")
+                for (var i = 0; i < rows.length; ++i) {
+                    if (rows[i] !== "")
+                        console.log("[RooTheater] YT diag: " + rows[i])
+                }
+                // Keep logging live for the next few seconds, so the trace also
+                // shows whether the picture came back.
+                lastWdSeen = Date.now()
+                return
+            }
             if (t.indexOf("RTFS:") !== 0)
                 return
             var bar = t.indexOf("|")
@@ -343,7 +531,10 @@ Page {
                 var now = Date.now()
                 if (payload.indexOf("wd=") >= 0)
                     lastWdSeen = now
-                if (now - lastWdSeen < 8000 && now - lastDiagLog > 1000) {
+                var interesting = payload.indexOf("ev=") >= 0
+                                  || now - lastWdSeen < 8000
+                if ((interesting || ytDiag.value === true)
+                        && now - lastDiagLog > 1000) {
                     lastDiagLog = now
                     console.log("[RooTheater] YT diag: " + payload)
                 }

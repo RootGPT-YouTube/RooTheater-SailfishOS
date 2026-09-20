@@ -748,6 +748,18 @@
         <source>Version, license and credits</source>
         <translation>Versione, licenza e crediti</translation>
     </message>
+    <message>
+        <source>YouTube</source>
+        <translation>YouTube</translation>
+    </message>
+    <message>
+        <source>Use H.264 for YouTube</source>
+        <translation>Usa H.264 per YouTube</translation>
+    </message>
+    <message>
+        <source>Play YouTube videos in H.264 instead of VP9. On some phones the VP9 decoder stops delivering frames and the picture freezes while the sound carries on; H.264 goes through a different decoder that does not suffer from it. Takes effect on the next video.</source>
+        <translation>Riproduce i video di YouTube in H.264 invece che in VP9. Su alcuni telefoni il decoder VP9 smette di consegnare i fotogrammi e l&apos;immagine si blocca mentre l&apos;audio continua; l&apos;H.264 passa da un decoder diverso che non ne soffre. Ha effetto dal prossimo video.</translation>
+    </message>
 </context>
 <context>
     <name>PlayerPage</name>
