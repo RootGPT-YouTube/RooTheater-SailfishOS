@@ -40,10 +40,67 @@ Page {
     // page's own fullscreenchange listener (see watchInitJs) which reports the
     // video's aspect ratio. A landscape clip rotates to fill the screen; a
     // portrait clip (stories / vertical videos) stays upright but still fills it.
+    // A video whose dimensions are not known yet reports ":unk" and leaves this
+    // alone — every rotation resizes the WebView, so none is spent on a guess.
     property int fsMode: 0
     allowedOrientations: fsMode === 1 ? Orientation.Landscape
                        : fsMode === 2 ? Orientation.Portrait
                                       : Orientation.All
+
+    // Use the WHOLE screen, camera hole included. Silica's default for every page
+    // is CutoutMode.AvoidLandscapeCutout, and in landscape Page.qml then takes
+    // Screen.topCutout.height off the page's width (see its line 143) so text and
+    // buttons never fall under the hole. Right for the rest of the app, wrong here:
+    // measured on the POCO, whose hole is declared as 93px tall
+    // (dconf /desktop/…/cutouts=[[503,0,74,93]]), the player page came out
+    // 2307x1080 instead of 2400x1080 — a 93px band of ambience down one side and
+    // the picture pushed 47px off the screen's centre, which is the milder half of
+    // the reported fault. A video wants the full display and the hole can sit in
+    // the black border. Scoped to THIS page: the pages made of text keep avoiding
+    // the hole, as they should.
+    cutoutMode: CutoutMode.FullScreen
+
+    // A single pixel taken off the WebView's width and given straight back. It
+    // exists because QuickMozView only pushes a size down to Gecko when the size
+    // CHANGES: after the page rotates, the final geometry can arrive while an
+    // earlier resize is still in flight, and Gecko is then left laying the document
+    // out at one size and painting it at another. That is the fault measured from a
+    // viewer's screenshot on 2026-09-21 — a watch page laid out for the full
+    // 2520x1080 screen but painted only 1852px wide, so the right-hand third of the
+    // picture and of the control bar were simply not there and the app's own
+    // background showed through. Re-asserting the size once the rotation has
+    // settled forces the two back into agreement; a no-op when they already agree.
+    property int sizeNudge: 0
+
+    onOrientationTransitionRunningChanged: {
+        if (!orientationTransitionRunning)
+            geomResync.restart()
+    }
+    onOrientationChanged: geomResync.restart()
+
+    // Late enough that the rotation is finished and Silica is not still animating,
+    // early enough that nobody has settled into watching a cut-off picture.
+    Timer {
+        id: geomResync
+        interval: 250
+        onTriggered: {
+            page.sizeNudge = 1
+            geomRestore.restart()
+        }
+    }
+    Timer {
+        id: geomRestore
+        interval: 80
+        onTriggered: {
+            page.sizeNudge = 0
+            // And tell the document, so YouTube re-runs its own player arithmetic
+            // against the size that is now really there instead of keeping the box
+            // it computed mid-rotation.
+            if (page.ready)
+                web.runJavaScript(
+                    "try{window.dispatchEvent(new Event('resize'));}catch(e){}")
+        }
+    }
 
     readonly property string watchUrl: "https://m.youtube.com/watch?v=" + videoId
     readonly property string embedUrl: "https://www.youtube.com/embed/" + videoId
@@ -69,13 +126,18 @@ Page {
     //    user gesture; raw video.play() fails — the media isn't attached until
     //    YT's own play, and autoplay-blocked play is re-paused once activation
     //    expires, hence media.autoplay.default=0 in the prefs below).
-    //  • orientation reporter (portrait-safe): reports fullscreen state + the
-    //    video orientation to QML via document.title ("RTFS:1:land"/":port"/
-    //    "RTFS:0"), only claiming landscape once the video is proven wider than
-    //    tall, so vertical videos/shorts are never rotated sideways.
+    //  • orientation reporter: reports fullscreen state + the video orientation to
+    //    QML via document.title ("RTFS:1:land"/":port"/":unk"/"RTFS:0"), naming an
+    //    orientation only once the video is proven wider or taller than itself, so
+    //    vertical videos/shorts are never rotated sideways and nothing is rotated
+    //    on a guess.
     //  • orientation poller: the real dimensions usually arrive AFTER we're already
     //    fullscreen, so a 600ms poll re-reports until then and flips the page to
     //    landscape the moment they're known.
+    //  • geometry re-sync: the page is rotated while the WebView is live, and the
+    //    size Gecko paints at can fall out of step with the size it lays out for —
+    //    a cut-off, off-centre picture. Re-asserted once the rotation settles (see
+    //    the nudge below).
     //  • quality cap: pins the best level up to 720p instead of letting YouTube's
     //    ABR drift with the bandwidth (see the block below for why it retries).
     // Background playback (cover / blank screen) is not handled here but by the
@@ -91,6 +153,22 @@ Page {
         "var q={};try{if(v.getVideoPlaybackQuality)q=v.getVideoPlaybackQuality()||{};}catch(e){}" +
         "return ['t='+(v.currentTime||0).toFixed(2),'pause='+(v.paused?1:0)," +
         "'rs='+v.readyState,'size='+v.videoWidth+'x'+v.videoHeight," +
+        // Geometry, and why it is worth three tokens. On 2026-09-21 a viewer's
+        // fullscreen picture was cut off on the right with the ambience showing
+        // through, and measuring that screenshot named the fault: the page had been
+        // laid out for the whole 2520x1080 screen — a 16:9 video 1920 wide, centred
+        // with exactly 300px of letterbox on each side, and the control bar inset by
+        // 72 — while only the leftmost 1852px were ever PAINTED. Everything past
+        // that column was the app's own background, not YouTube's. So the player's
+        // arithmetic was right and the surface it was painted on was the wrong size.
+        // `win` against the real screen and `vr` against `win` keep the two apart
+        // for good: a wrong `win` is ours, an off-centre `vr` inside a right `win`
+        // is the player's.
+        "'win='+window.innerWidth+'x'+window.innerHeight," +
+        "'dpr='+(window.devicePixelRatio||1)," +
+        "'vr='+rect(document.querySelector('video'))," +
+        "'fr='+rect(document.fullscreenElement||document.webkitFullscreenElement" +
+        "||document.mozFullScreenElement)," +
         "'total='+(q.totalVideoFrames===undefined?'NA':q.totalVideoFrames)," +
         "'drop='+(q.droppedVideoFrames===undefined?'NA':q.droppedVideoFrames)," +
         "'buf='+(v.buffered.length?v.buffered.end(v.buffered.length-1).toFixed(1):'-')," +
@@ -130,6 +208,11 @@ Page {
         "for(var i=0;i<b.length;i++){" +
         "if(t>=b.start(i)-0.1&&t<=b.end(i))return +(b.end(i)-t).toFixed(1);}" +
         "return 0;}catch(e){return -1;}}" +
+        // Box of an element in CSS pixels, as <w>x<h>@<left>,<top>. '-' when there
+        // is no such element (no video yet, or not fullscreen).
+        "function rect(e){try{if(!e)return '-';var r=e.getBoundingClientRect();" +
+        "return Math.round(r.width)+'x'+Math.round(r.height)" +
+        "+'@'+Math.round(r.left)+','+Math.round(r.top);}catch(x){return '?';}}" +
         "function qActual(){try{var p=document.getElementById('movie_player');" +
         "if(p&&p.getPlaybackQuality)return p.getPlaybackQuality()||'?';}catch(e){}return '?';}" +
         // The shape of the holes, which is what names the cause. On 2026-09-20 a
@@ -180,12 +263,25 @@ Page {
         "window.__rtUrTot++;window.__rtEv='wait@'+(v.currentTime||0).toFixed(1)" +
         "+' hr='+headroom(v);report();rbPush();rbDump('underrun');" +
         "setTimeout(function(){window.__rtEv='';},3000);}" +
-        // orientation reporter (portrait-safe: landscape only when proven wider)
+        // Orientation reporter. Three answers, not two: `land` and `port` only once
+        // the video's real dimensions prove which it is, and `unk` while they are
+        // still unknown — which is the normal state for the first second or so of
+        // every video, because fullscreen is entered before the media is attached.
+        //
+        // `unk` used to be reported as `port`, on the reasoning that guessing
+        // portrait can never turn a vertical video sideways. True, but it costs a
+        // rotation nobody asked for: a viewer already HOLDING the phone in landscape
+        // was rotated to portrait on the guess and back to landscape a moment later,
+        // and each of those rotations resizes the WebView. That double flip is the
+        // best candidate for the size the picture is painted at falling out of step
+        // with the size it is laid out for (see the geometry tokens above). With
+        // `unk` the page simply keeps whatever orientation it has, which for a
+        // vertical video is still never sideways — the device decides.
         "function report(){var fe=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;" +
         "if(!fe){document.title='RTFS:0|'+diag();return;}" +
-        "var v=document.querySelector('video');var land=false;" +
-        "if(v&&v.videoWidth&&v.videoHeight)land=(v.videoWidth>v.videoHeight);" +
-        "document.title='RTFS:1:'+(land?'land':'port')+'|'+diag();}" +
+        "var v=document.querySelector('video');var o='unk';" +
+        "if(v&&v.videoWidth&&v.videoHeight)o=(v.videoWidth>v.videoHeight)?'land':'port';" +
+        "document.title='RTFS:1:'+o+'|'+diag();}" +
         "['fullscreenchange','webkitfullscreenchange','mozfullscreenchange']" +
         ".forEach(function(e){document.addEventListener(e,report,true);});" +
         // The mobile watch page opens PAUSED (YouTube doesn't autoplay). We start
@@ -348,6 +444,45 @@ Page {
         "['loadedmetadata','resize','playing'].forEach(function(e){v.addEventListener(e,report);});" +
         "['waiting','stalled'].forEach(function(e){v.addEventListener(e,onWait);});" +
         "v.addEventListener('playing',function(){window.__rtStarted=1;setTimeout(setQ,600);});}" +
+        // Make the fullscreen picture fill the fullscreen box BY CONSTRUCTION,
+        // instead of trusting the player to have re-laid itself out for it.
+        //
+        // Measured on the POCO on 2026-09-21, two runs of the same build minutes
+        // apart, same video, same options:
+        //   vr=640x360@65,0    ← right: fills the 769x360 viewport's height, centred
+        //   vr=555x312@107,0   ← wrong: 13% too small and stuck to the TOP
+        // 360 − 312 = 48, which is exactly YouTube's mobile header height, and the
+        // box is top-aligned: the player had laid itself out as the INLINE player,
+        // inside a fullscreen element that was itself correct (fr=769x360@0,0). So
+        // Gecko's fullscreen took, and YouTube's own fullscreen layout did not —
+        // which is the risk the fullscreen starter below always carried, because we
+        // enter fullscreen through requestFullscreen rather than through YouTube's
+        // own button, so its internal state machine never runs.
+        //
+        // Rather than race it, pin the chain from the fullscreen element down to
+        // the video and let `object-fit: contain` do the letterboxing: the browser
+        // then re-derives it from the real box on every resize and every
+        // resolution change, and there is no arithmetic of ours or YouTube's left
+        // to get wrong. Scoped to :fullscreen so the normal page is untouched, and
+        // installed as a <style> in <head> so it survives YouTube swapping the
+        // player's DOM (ad → content).
+        "function fsCss(){if(document.getElementById('rtfs'))return;" +
+        "var fill='{position:absolute!important;left:0!important;top:0!important;'" +
+        "+'width:100%!important;height:100%!important;margin:0!important;}';" +
+        "var vid='{position:absolute!important;left:0!important;top:0!important;'" +
+        "+'width:100%!important;height:100%!important;'" +
+        "+'object-fit:contain!important;transform:none!important;}';var css='';" +
+        // One rule PER PREFIX, never the two prefixes in one comma list: CSS drops
+        // the WHOLE rule when any selector in the list is unknown, so pairing them
+        // would let an unrecognised prefix take the working one down with it. The
+        // engine here is Gecko 91, which knows both — this is so the fix does not
+        // quietly evaporate on some other build.
+        "[':-moz-full-screen',':fullscreen'].forEach(function(f){" +
+        "css+=f+' #movie_player,'+f+' .html5-video-player,'+f+' .html5-video-container'+fill;" +
+        "css+=f+' video'+vid;});" +
+        "var st=document.createElement('style');st.id='rtfs';st.textContent=css;" +
+        "(document.head||document.documentElement).appendChild(st);}" +
+        "fsCss();" +
         // Enter fullscreen via requestFullscreen (a direct API call — works
         // programmatically; a synthetic .click() on YouTube's button is ignored as
         // untrusted). Target YouTube's MOBILE player container #player-container-id
@@ -360,7 +495,7 @@ Page {
         "var fe=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;" +
         "if(fe){clearInterval(k);return;}" +          // fullscreen in → done
         "var v=document.querySelector('video');hookV(v);" +
-        "goFs();" +
+        "fsCss();goFs();" +
         "if(n>25){clearInterval(k);}" +
         "},400);" +
         // Poll orientation while fullscreen: the video's real size usually arrives
@@ -452,7 +587,12 @@ Page {
 
     WebView {
         id: web
-        anchors.fill: parent
+        // Explicit geometry rather than anchors.fill, so page.sizeNudge above can
+        // re-assert it after a rotation (anchors leave nothing to re-assert).
+        x: 0
+        y: 0
+        width: page.width - page.sizeNudge
+        height: page.height
         httpUserAgent: page.youtubeUa
         url: page.embedUrl                 // consent bootstrap (hidden)
         // Background playback. Sailfish.WebView binds `active` to
@@ -529,6 +669,7 @@ Page {
                 // playback stays silent.
                 var payload = t.substring(bar + 1)
                 var now = Date.now()
+                web.checkGeom(payload)
                 if (payload.indexOf("wd=") >= 0)
                     lastWdSeen = now
                 var interesting = payload.indexOf("ev=") >= 0
@@ -539,15 +680,50 @@ Page {
                     console.log("[RooTheater] YT diag: " + payload)
                 }
             }
-            if (fs === "RTFS:0")
-                page.fsMode = 0
-            else if (fs.indexOf(":land") > 0)
-                page.fsMode = 1
-            else if (fs.indexOf(":port") > 0)
-                page.fsMode = 2
+            if (fs === "RTFS:0") {
+                // Do NOT unlock the orientation on a single report. The probe below
+                // speaks every two seconds whether or not the page is fullscreen, so
+                // one sample landing in a gap between fullscreen transitions would
+                // rotate the page out of landscape and the next sample would rotate
+                // it straight back — two resizes of a live WebView for nothing, and
+                // the likeliest way its painted size falls out of step with its
+                // layout. A real exit still unlocks, a quarter-second later.
+                if (page.fsMode !== 0 && !fsDrop.running)
+                    fsDrop.restart()
+            } else {
+                fsDrop.stop()
+                if (fs.indexOf(":land") > 0)
+                    page.fsMode = 1
+                else if (fs.indexOf(":port") > 0)
+                    page.fsMode = 2
+                // ":unk" — dimensions not known yet: leave the orientation as it is.
+            }
         }
+        // One journal line per geometry change, always, diagnostics switch or not:
+        // this is the whole record of what the page was laid out for, it is a handful
+        // of lines per video, and a cut-off picture is unreadable without it.
+        //   sudo journalctl -b --no-pager | grep "YT geom"
+        function checkGeom(payload) {
+            var i = payload.indexOf("win=")
+            if (i < 0)
+                return
+            var g = payload.substring(i).split(" ").slice(0, 4).join(" ")
+            if (g === lastGeom)
+                return
+            lastGeom = g
+            console.log("[RooTheater] YT geom: " + g
+                        + " page=" + Math.round(page.width) + "x" + Math.round(page.height)
+                        + " view=" + Math.round(web.width) + "x" + Math.round(web.height)
+                        + " fsMode=" + page.fsMode)
+        }
+        property string lastGeom: ""
         property double lastDiagLog: 0
         property double lastWdSeen: 0
+        Timer {
+            id: fsDrop
+            interval: 1500
+            onTriggered: page.fsMode = 0
+        }
         Timer { id: gotoWatch; interval: 400; onTriggered: web.url = page.watchUrl }
 
         PullDownMenu {

@@ -9,6 +9,18 @@ Page {
     allowedOrientations: Orientation.All
     backNavigation: controls.visible
 
+    // A picture takes the whole display, camera hole and all; a listening session
+    // does not. Silica's default for every page is CutoutMode.AvoidLandscapeCutout,
+    // which in landscape takes Screen.topCutout.height off the page's width
+    // (Page.qml:143) so nothing lands under the hole. For the video that inset is
+    // pure loss — measured on the POCO, whose hole is declared 93px tall, it left a
+    // 93px band of ambience down one side and pushed the picture 47px off the
+    // screen's centre (see YtPlayerPage for the same fix and the measurements). For
+    // the audio view it is exactly right: that view IS text and buttons, and they
+    // would be the thing sitting under the hole. So it follows the content.
+    cutoutMode: engine.hasVideo ? CutoutMode.FullScreen
+                                : CutoutMode.AvoidLandscapeCutout
+
     // Media source (local file path or network URL) passed in from MainPage.
     property string source: ""
 
