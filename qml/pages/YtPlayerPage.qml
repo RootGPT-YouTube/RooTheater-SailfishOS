@@ -315,6 +315,11 @@ Page {
         // and re-apply on every "playing" (an ad and the content that follows are
         // separate media with separate ladders).
         "var RTQ=['hd720','large','medium','small','tiny'];" +
+        // How far down the watchdog may push the ceiling. 'medium' is 360p; the two
+        // rungs below it exist for the background throttle, which nails the lowest
+        // level on purpose because nobody is looking, and for ABR to reach for
+        // itself inside the range when a link really is that bad.
+        "var RTFLOOR=RTQ.indexOf('medium');" +
         "window.__rtQSet='';window.__rtCapIdx=0;" +
         "function avQ(p){try{return p.getAvailableQualityLevels()||[];}catch(e){return [];}}" +
         // Apply the ceiling as a RANGE (floor..ceiling), never min==max. This is the
@@ -397,7 +402,11 @@ Page {
         // take, and as a last resort step the quality down a notch, which also
         // makes a relapse less likely. Recoveries are rate-limited to one per 5s
         // and reported to QML for the journal.
-        "var WD={total:0,drop:0,t:-1,bad:0,ok:0,fixAt:0,step:0};" +
+        // `seen` is the guard that keeps this watchdog from eating a healthy
+        // picture: it stays 0 until totalVideoFrames has actually been observed to
+        // GROW. See the sampler below for why a counter that never moves is not a
+        // frozen decoder.
+        "var WD={total:0,drop:0,t:-1,bad:0,ok:0,fixAt:0,step:0,seen:0};" +
         "function wdFix(v,p){var t=v.currentTime;WD.step++;" +
         "if(WD.step===1){if(p&&p.seekTo)p.seekTo(t+0.05,true);else v.currentTime=t+0.05;" +
         "return 'seek@'+t.toFixed(1);}" +
@@ -410,8 +419,18 @@ Page {
         // the old tangle of reading the level back out of the player is gone, and
         // with it the `q=?` case that quietly degraded this step into a second
         // pointless seek (journal of 2026-09-04).
+        // …and it stops at RTFLOOR (360p) instead of walking all the way down.
+        // At the LAST rung the "range" stops being a range: applyCap computes
+        // top='tiny', lowestQ also answers 'tiny', and the call becomes
+        // setPlaybackQualityRange('tiny','tiny') — the nail 1.5.0 was written to
+        // abolish, reintroduced through the back door, with ABR forbidden to climb
+        // out of 144p for the rest of the video. Measured on the bench on
+        // 2026-09-21: with the frame counter frozen, hd720 → tiny in 56 seconds and
+        // 256x144 for ever after, on a stream whose buffer was 158 seconds deep.
+        // 360p is low enough to rescue a decoder in trouble and still leaves the
+        // range three rungs to work in.
         "WD.step=0;" +
-        "if(window.__rtCapIdx+1<RTQ.length){window.__rtCapIdx++;" +
+        "if(window.__rtCapIdx+1<=RTFLOOR){window.__rtCapIdx++;" +
         "if(p)applyCap(p);return 'capdown→'+RTQ[window.__rtCapIdx]+'@'+t.toFixed(1);}" +
         "if(p&&p.seekTo)p.seekTo(t+0.05,true);return 'seek2@'+t.toFixed(1);}" +
         "setInterval(function(){var v=document.querySelector('video');if(!v)return;" +
@@ -432,8 +451,37 @@ Page {
         "if(WD.t<0){WD.t=ct;WD.total=q.totalVideoFrames;WD.drop=q.droppedVideoFrames;return;}" +
         "var dt=q.totalVideoFrames-WD.total,dd=q.droppedVideoFrames-WD.drop,dc=ct-WD.t;" +
         "WD.total=q.totalVideoFrames;WD.drop=q.droppedVideoFrames;WD.t=ct;" +
-        "var stuck=(dt>0&&dd>=dt*0.9)||(dt===0&&dc>0.2);" +
-        "if(stuck){WD.bad++;WD.ok=0;}else{WD.bad=0;if(++WD.ok>40)WD.step=0;}" +
+        "if(dt>0)WD.seen=1;" +
+        // A counter that has NEVER moved is not a frozen decoder, it is a decoder
+        // that does not report — and the two are indistinguishable in the numbers
+        // the old test read. getVideoPlaybackQuality is fed by whichever decoder
+        // Gecko ended up on, and the video path is not the same one for every
+        // codec: VP9 and H.264 land on different vendor components here. Shape B's
+        // test (dt===0 while the clock runs) is TRUE for every single sample of a
+        // decoder that keeps the counter at zero, so the watchdog ran its whole
+        // ladder against a picture that was perfectly fine — a seek every five
+        // seconds and the quality walked down to 144p, which is what a viewer
+        // reported after turning the H.264 option on. Reproduced on the bench on
+        // 2026-09-21 by freezing the counter and changing nothing else.
+        //
+        // So shape B only counts once the counter has been seen to grow at least
+        // once in this playback. Shape A is untouched: it needs dt>0 to fire, which
+        // already proves the counter is live.
+        "var stuck=(dt>0&&dd>=dt*0.9)||(WD.seen&&dt===0&&dc>0.2);" +
+        "if(stuck){WD.bad++;WD.ok=0;}else{WD.bad=0;" +
+        // Healthy again: first forget the cure ladder, then — after a further clean
+        // stretch — give a rung of the ceiling BACK. Without this the ceiling was a
+        // one-way ratchet (set to 0 at init, only ever incremented): one rough
+        // patch, a tunnel or a wedged ad, and the rest of the video was watched at
+        // the reduced level even on a link that had long recovered. One rung per
+        // ~40s of clean playback, and the counter is reset after each step so it
+        // climbs slowly and drops fast — the way a quality ladder should behave.
+        // (80 samples at 500ms; the floor above leaves two rungs to climb, so a
+        // full recovery takes about a minute and a half of clean playback.)
+        "if(++WD.ok>40){WD.step=0;" +
+        "if(window.__rtCapIdx>0&&WD.ok>80){window.__rtCapIdx--;WD.ok=0;" +
+        "if(p)applyCap(p);window.__rtWdMsg='capup→'+RTQ[window.__rtCapIdx];" +
+        "report();setTimeout(function(){window.__rtWdMsg='';},4000);}}}" +
         "if(WD.bad<4)return;" +
         "var now=Date.now();if(now-WD.fixAt<5000)return;WD.fixAt=now;WD.bad=0;" +
         "window.__rtWdMsg=wdFix(v,p);report();rbPush();rbDump('wd');" +
