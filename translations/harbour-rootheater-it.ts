@@ -1131,14 +1131,6 @@ Trascina verso il basso per riprovare.</translation>
 <context>
     <name>YtPlayerPage</name>
     <message>
-        <source>Open in browser</source>
-        <translation>Apri nel browser</translation>
-    </message>
-    <message>
-        <source>Reload</source>
-        <translation>Ricarica</translation>
-    </message>
-    <message>
         <source>Loading…</source>
         <translation>Caricamento…</translation>
     </message>

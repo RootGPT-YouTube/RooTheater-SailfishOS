@@ -1131,14 +1131,6 @@ Pull down to retry.</translation>
 <context>
     <name>YtPlayerPage</name>
     <message>
-        <source>Open in browser</source>
-        <translation>Open in browser</translation>
-    </message>
-    <message>
-        <source>Reload</source>
-        <translation>Reload</translation>
-    </message>
-    <message>
         <source>Loading…</source>
         <translation>Loading…</translation>
     </message>

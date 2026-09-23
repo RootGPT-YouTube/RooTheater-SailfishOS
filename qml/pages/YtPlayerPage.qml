@@ -47,6 +47,19 @@ Page {
                        : fsMode === 2 ? Orientation.Portrait
                                       : Orientation.All
 
+    // True while the watch page is fullscreen, whatever the video's shape (fsMode
+    // stays 0 for a video whose size is not known yet). While it is, the page does
+    // not answer the back swipe. RawWebView keeps a horizontal drag for Gecko ONLY
+    // when the document can scroll that way (sailfish-components-webview,
+    // rawwebview.cpp), and a fullscreen player never can — so every sideways
+    // stroke, the scrub along YouTube's progress bar first of all, went to the
+    // PageStack instead: the page slid with the finger and a decisive stroke
+    // closed it. Gecko got a TouchCancel for the stolen stroke, which also lost any
+    // tap that wobbled a few pixels sideways. Leaving fullscreen through YouTube's
+    // own button gives the swipe back.
+    property bool inFullscreen: false
+    backNavigation: !inFullscreen
+
     // Use the WHOLE screen, camera hole included. Silica's default for every page
     // is CutoutMode.AvoidLandscapeCutout, and in landscape Page.qml then takes
     // Screen.topCutout.height off the page's width (see its line 143) so text and
@@ -546,6 +559,63 @@ Page {
         "fsCss();goFs();" +
         "if(n>25){clearInterval(k);}" +
         "},400);" +
+        // The top-bar buttons in fullscreen (settings gear, captions, autoplay).
+        // They received the tap and YouTube simply did nothing: measured on the
+        // Gecko bench, the same click that opens the settings sheet inline is a
+        // no-op once document.fullscreenElement is set — with YouTube's OWN
+        // fullscreen button too, so it is YouTube's choice, not our starter. Two
+        // steps undo it, both scoped to a click on the top bar or inside the sheet:
+        //  • for 400ms document.fullscreenElement reads null, through an own
+        //    property shadowing the prototype getter — the real fullscreen stays on,
+        //    YouTube just takes its inline path. ONLY that one property: masking the
+        //    prefixed and boolean twins as well (document.fullscreen & co.) made
+        //    YouTube conclude it had left fullscreen — its button turned into "enter
+        //    fullscreen" for good and nothing could exit any more (bench, one
+        //    property at a time: this one alone opens the sheet and harms nothing);
+        //  • the sheet it opens lives in bottom-sheet-container under ytm-app,
+        //    outside the fullscreen element, where nothing is painted — so that
+        //    container is moved into the fullscreen element, and back to where it
+        //    came from when fullscreen ends (inline, it must not sit in the player).
+        // Our own reporting keeps working: a masked report says "RTFS:0", which
+        // the 1.5s fsDrop debounce on the QML side outlasts.
+        "var fsP=Object.getOwnPropertyDescriptor(Document.prototype,'fullscreenElement');" +
+        "function realFe(){try{return fsP.get.call(document);}catch(e){return null;}}" +
+        "var fmT=null,shHome=null;" +
+        "function fsMask(){if(!fsP)return;" +
+        "Object.defineProperty(document,'fullscreenElement',{configurable:true,get:function(){return null;}});" +
+        "clearTimeout(fmT);fmT=setTimeout(function(){try{delete document.fullscreenElement;}catch(e){}},400);}" +
+        "document.addEventListener('click',function(e){var fe=realFe();var t=e.target;" +
+        "if(!fe||!t||!t.closest)return;" +
+        "if(!t.closest('.player-controls-top')&&!t.closest('bottom-sheet-container'))return;" +
+        "var sc=document.querySelector('bottom-sheet-container');" +
+        "if(sc&&!fe.contains(sc)){shHome=sc.parentNode;fe.appendChild(sc);}" +
+        "fsMask();},true);" +
+        "['fullscreenchange','mozfullscreenchange'].forEach(function(ev){document.addEventListener(ev,function(){" +
+        "if(realFe()||!shHome)return;var sc=document.querySelector('bottom-sheet-container');" +
+        "if(sc&&sc.parentNode!==shHome)shHome.appendChild(sc);shHome=null;},true);});" +
+        // Tap-to-seek on the progress bar. YouTube's mobile bar only seeks on a
+        // DRAG of a finger: a plain tap on it is ignored (measured on the Gecko
+        // bench — the mouse click seeks, the touch tap delivers touchstart,
+        // touchend and a synthetic click and nothing moves). So a short, still tap
+        // on a VISIBLE bar seeks to that point through the player API. Hidden bar
+        // (controls faded out) → leave the tap alone: it must just bring the
+        // controls back, as YouTube intends. Any real movement hands the stroke
+        // back to YouTube's own scrubbing.
+        "var sk=null;function skBar(e){var t=e.target;return t&&t.closest?t.closest('yt-progress-bar'):null;}" +
+        "function skShown(el){while(el&&el.nodeType===1){var cs=getComputedStyle(el);" +
+        "if(cs.display==='none'||cs.visibility==='hidden'||parseFloat(cs.opacity)<0.5)return false;" +
+        "el=el.parentElement;}return true;}" +
+        "document.addEventListener('touchstart',function(e){sk=null;if(e.touches.length!==1)return;" +
+        "var b=skBar(e);if(!b||!skShown(b))return;var t=e.touches[0];" +
+        "sk={b:b,x:t.clientX,y:t.clientY,at:Date.now()};},true);" +
+        "document.addEventListener('touchmove',function(e){if(!sk)return;var t=e.touches[0];" +
+        "if(Math.abs(t.clientX-sk.x)>12||Math.abs(t.clientY-sk.y)>12)sk=null;},true);" +
+        "document.addEventListener('touchcancel',function(){sk=null;},true);" +
+        "document.addEventListener('touchend',function(){var s=sk;sk=null;if(!s||Date.now()-s.at>600)return;" +
+        "var ln=s.b.querySelector('.ytProgressBarLineHost')||s.b;var r=ln.getBoundingClientRect();if(!(r.width>0))return;" +
+        "var f=Math.min(1,Math.max(0,(s.x-r.left)/r.width));var p=document.getElementById('movie_player');" +
+        "if(!p||typeof p.seekTo!=='function'||typeof p.getDuration!=='function')return;" +
+        "var d=p.getDuration();if(!(d>0))return;try{p.seekTo(f*d,true);}catch(x){}},true);" +
         // Poll orientation while fullscreen: the video's real size usually arrives
         // AFTER we're already fullscreen (unknown at FS time → stuck on the
         // portrait-safe default). Re-setting the same title does NOT re-emit the
@@ -736,10 +806,11 @@ Page {
                 // it straight back — two resizes of a live WebView for nothing, and
                 // the likeliest way its painted size falls out of step with its
                 // layout. A real exit still unlocks, a quarter-second later.
-                if (page.fsMode !== 0 && !fsDrop.running)
+                if ((page.fsMode !== 0 || page.inFullscreen) && !fsDrop.running)
                     fsDrop.restart()
             } else {
                 fsDrop.stop()
+                page.inFullscreen = true
                 if (fs.indexOf(":land") > 0)
                     page.fsMode = 1
                 else if (fs.indexOf(":port") > 0)
@@ -770,25 +841,16 @@ Page {
         Timer {
             id: fsDrop
             interval: 1500
-            onTriggered: page.fsMode = 0
+            onTriggered: {
+                page.fsMode = 0
+                page.inFullscreen = false
+            }
         }
         Timer { id: gotoWatch; interval: 400; onTriggered: web.url = page.watchUrl }
 
-        PullDownMenu {
-            MenuItem {
-                text: qsTr("Open in browser")
-                onClicked: Qt.openUrlExternally(page.watchUrl)
-            }
-            MenuItem {
-                text: qsTr("Reload")
-                onClicked: {
-                    page.ready = false
-                    page.fsMode = 0
-                    web.consentDone = false
-                    web.url = page.embedUrl
-                }
-            }
-        }
+        // No PullDownMenu here: a WebView is not a Flickable, so a pulley on it has
+        // no flickable to hang from — it never opened, and every visit logged a
+        // burst of "Cannot read property … of null" from PulleyMenuBase.
     }
 
     // Loading overlay: covers the hidden embed (and its error-153 page) until the

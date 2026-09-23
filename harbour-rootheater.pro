@@ -15,7 +15,7 @@ TARGET = harbour-rootheater
 # and on the app template truncates it to major.minor when expanded.
 # Displayed in-app (AboutPage) via APP_VERSION. RPM Version stays numeric (0.9.0
 # in the spec/yaml) since RPM forbids '-'; the "-beta" label lives in APP_VERSION.
-RT_APP_VERSION = 1.5.2
+RT_APP_VERSION = 1.5.5
 # VERSION must be a clean numeric for qmake (it's reserved / gets parsed); keep it
 # separate from RT_APP_VERSION so the "-beta" suffix doesn't reach it.
 VERSION = 1.3.0
