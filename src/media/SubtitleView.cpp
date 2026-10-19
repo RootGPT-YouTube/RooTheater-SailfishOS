@@ -397,6 +397,9 @@ void SubtitleView::checkJob()
     if (!m_job || m_job->done) {
         m_jobTimer.stop();
         m_loading = false;
+        qInfo("SubtitleView: %d cues from %s%s", cueCount(),
+              qPrintable(m_file.isEmpty() ? m_source + QStringLiteral(" #%1").arg(m_streamIndex) : m_file),
+              failed() ? " (failed)" : "");
     }
     emit loadingChanged();
 }

@@ -155,7 +155,11 @@ bool frameAvailableThunk(void *data, DroidMediaBuffer *buffer)
     static_cast<DroidCodecBackend *>(data)->onFrameAvailable(buffer);
     return true;
 }
-bool bufferCreatedThunk(void *, DroidMediaBuffer *) { return true; }
+bool bufferCreatedThunk(void *data, DroidMediaBuffer *buffer)
+{
+    static_cast<DroidCodecBackend *>(data)->onBufferCreated(buffer);
+    return true;   // keep it: false would make droidmedia drop the frame
+}
 void buffersReleasedThunk(void *) {}
 
 // Buffer ref/unref for droid_media_codec_queue(). droidmedia dereferences this
@@ -169,6 +173,8 @@ void rtBufUnref(void *data) { free(data); }
 // thread. Small: just enough to absorb pacing/present jitter without holding many
 // gralloc buffers out of the decoder's pool (the sink holds ≤2 more).
 constexpr size_t kMaxPendingFrames = 4;
+// Minimum time between two decoder (re)starts — see m_restartTimer in the header.
+constexpr qint64 kMinRestartGapMs = 2000;
 
 } // namespace
 
@@ -182,6 +188,11 @@ DroidCodecBackend::DroidCodecBackend(QObject *parent)
             &DroidCodecBackend::onPostPosition, Qt::QueuedConnection);
     connect(this, &DroidCodecBackend::postDuration, this,
             &DroidCodecBackend::onPostDuration, Qt::QueuedConnection);
+    m_restartTimer.setSingleShot(true);
+    connect(&m_restartTimer, &QTimer::timeout, this, [this]() {
+        if (m_pendingSeekMs >= 0)
+            seek(m_pendingSeekMs);
+    });
 }
 
 DroidCodecBackend::~DroidCodecBackend()
@@ -223,6 +234,7 @@ void DroidCodecBackend::setLoop(bool on)
 void DroidCodecBackend::play(const QString &url)
 {
     stop();
+    m_sinceStart.start();
     m_url = url;
     m_gen.fetch_add(1);    // stale state updates from the torn-down pipeline now drop
     m_stop = false;
@@ -263,6 +275,8 @@ void DroidCodecBackend::togglePause()
 
 void DroidCodecBackend::stop()
 {
+    m_restartTimer.stop();      // a held-back restart dies with the pipeline
+    m_pendingSeekMs = -1;
     m_stop = true;
     m_paused = false;
     // Wake the audio thread (it may be blocked on the packet queue) and the demux
@@ -281,6 +295,16 @@ void DroidCodecBackend::stop()
         m_demuxThread.join();
     if (m_audioThread.joinable())
         m_audioThread.join();
+    // The video-feed thread may be blocked INSIDE droid_media_codec_queue: the
+    // codec's input source holds at most 5 buffers and add() waits for room, which
+    // only consumption or a drain gives. A decoder that has stalled (restarted again
+    // right after starting — two quick track changes or seeks) never consumes, so
+    // the join below waited forever and froze the GUI (gdb on the POCO: GUI thread
+    // in stop() → join, feed thread in pthread_cond_wait inside libdroidmedia).
+    // Draining makes add() drop the buffer and return; nothing is lost, the codec
+    // is torn down anyway. The demux is joined, so nothing queues behind it.
+    if (m_codec)
+        droid_media_codec_drain(m_codec);
     // Join the video-feed thread (it frees any unsubmitted copies on exit) and the
     // present thread (it drains/releases any queued buffers) BEFORE destroying the
     // codec, else a later queue/release hits a dead codec.
@@ -312,10 +336,21 @@ void DroidCodecBackend::seek(qlonglong ms)
     // the codec errors out and dies). So we tear down and re-open at the seek
     // point, reusing the proven stop()/play() path. Heavier (codec re-init) but
     // reliable; a smoother in-place seek can come once buffer hand-back is solved.
-    if (m_state != Playing && m_state != Paused)
+    if (m_state != Playing && m_state != Paused && m_state != Opening)
         return;
     if (ms < 0)
         ms = 0;
+    // Too soon after the last start (or that start hasn't reached Playing yet):
+    // hold the restart back, keeping only the latest target (see m_restartTimer).
+    const qint64 since = m_sinceStart.isValid() ? m_sinceStart.elapsed() : kMinRestartGapMs;
+    if (since < kMinRestartGapMs || m_state == Opening) {
+        m_pendingSeekMs = ms;
+        m_restartTimer.start(int(qMax<qint64>(100, kMinRestartGapMs - since)));
+        m_positionMs = ms;
+        emit positionChanged();
+        return;
+    }
+    m_pendingSeekMs = -1;
     m_startMs = ms;        // consumed by openInput() of the restarted pipeline
     m_seeking = true;      // ...and stop() must not blank the picture meanwhile
     play(m_url);           // play() calls stop() first (joins threads, teardown)
@@ -332,7 +367,7 @@ void DroidCodecBackend::selectTracks(int videoStream, int audioStream)
     m_wantAudio = audioStream;
     // Restart at the playhead with the new streams (like a seek, it resumes
     // playback if paused); a stopped pipeline picks them up on its next play().
-    seek(m_positionMs);
+    seek(m_pendingSeekMs >= 0 ? m_pendingSeekMs : m_positionMs);
 }
 
 // ── ffmpeg demux + droidmedia decode (worker thread) ─────────────────────────
@@ -378,6 +413,7 @@ bool DroidCodecBackend::openInput(const QString &url)
 
     // Seek target carried over from seek() (which restarts the pipeline): jump to
     // the keyframe at/just before it before any packet is read or decoded.
+    m_seekFloorUs = m_startMs > 0 ? m_startMs * 1000 : -1;
     if (m_startMs > 0) {
         av_seek_frame(m_fmt, -1, av_rescale(m_startMs, AV_TIME_BASE, 1000), AVSEEK_FLAG_BACKWARD);
         m_startMs = 0;
@@ -743,6 +779,14 @@ void DroidCodecBackend::audioLoop()
         av_packet_free(&pkt);
 
         while (!m_stop && avcodec_receive_frame(m_audioCtx, frame) == 0) {
+            // Accurate seek: audio that ends before the target is never played.
+            const qint64 floorUs = m_seekFloorUs.load();
+            if (floorUs >= 0 && frame->pts != AV_NOPTS_VALUE && frame->sample_rate > 0) {
+                const qint64 startUs = av_rescale_q(frame->pts, as->time_base, AVRational{1, 1000000});
+                const qint64 durUs = qint64(frame->nb_samples) * 1000000 / frame->sample_rate;
+                if (startUs + durUs <= floorUs)
+                    continue;
+            }
             const int outSamples = swr_get_out_samples(m_swr, frame->nb_samples);
             const int needBytes = outSamples * m_outChannels * 2;
             if (outSamples > maxOutSamples) {
@@ -944,6 +988,16 @@ void DroidCodecBackend::freezeClock(bool freeze)
     m_clockFrozen = freeze;
 }
 
+void DroidCodecBackend::onBufferCreated(_DroidMediaBuffer *buffer)
+{
+    // Non-null user data, or droidmedia calls buffer_created again — with one more
+    // reference — every time it hands a reused slot back (private.cpp: "Recreate
+    // the user data if it was cleared").
+    droid_media_buffer_set_user_data(buffer, this);
+    std::lock_guard<std::mutex> lk(m_ownedMutex);
+    m_ownedBuffers.push_back(buffer);
+}
+
 void DroidCodecBackend::onFrameAvailable(_DroidMediaBuffer *buffer)
 {
     // Runs on the droidmedia output thread. Do NOT pace here — that would block the
@@ -985,6 +1039,13 @@ void DroidCodecBackend::presentLoop()
             m_frameQ.pop_front();
             lk.unlock();
             m_frameQNotFull.notify_one();
+        }
+        // Accurate seek: frames between the keyframe and the target go straight
+        // back to the decoder, unshown (20 ms slack keeps the frame AT the target).
+        const qint64 floorUs = m_seekFloorUs.load();
+        if (floorUs >= 0 && f.vptsUs + 20000 < floorUs) {
+            droid_media_buffer_release(f.buf, nullptr, nullptr);
+            continue;
         }
         paceAndPresent(f.buf, f.vptsUs);
     }
@@ -1104,6 +1165,22 @@ void DroidCodecBackend::teardown()
         droid_media_codec_destroy(m_codec);
         m_codec = nullptr;
         m_queue = nullptr; // owned by the codec; just drop our reference
+    }
+    // Hand back the references buffer_created gave us (see m_ownedBuffers). The
+    // threads are joined and the sink has released its buffers, but it may still
+    // hold an EGLImage of one of them for the render thread to destroy: the sink
+    // drops them after that (DroidVideoSink::retireBuffers).
+    {
+        std::vector<_DroidMediaBuffer *> owned;
+        {
+            std::lock_guard<std::mutex> lk(m_ownedMutex);
+            owned.swap(m_ownedBuffers);
+        }
+        if (m_sink)
+            m_sink->retireBuffers(owned);
+        else
+            for (_DroidMediaBuffer *b : owned)
+                droid_media_buffer_destroy(b);
     }
     if (m_bsf) { av_bsf_free(&m_bsf); m_bsf = nullptr; }
 

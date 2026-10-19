@@ -827,6 +827,10 @@
         <source>Audio</source>
         <translation>Audio</translation>
     </message>
+    <message>
+        <source>The hardware decoder stopped responding</source>
+        <translation>Il decoder hardware ha smesso di rispondere</translation>
+    </message>
 </context>
 <context>
     <name>PlaylistBuilderPage</name>

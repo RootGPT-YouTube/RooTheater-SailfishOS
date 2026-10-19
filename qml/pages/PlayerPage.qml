@@ -92,10 +92,18 @@ Page {
     // Decoding change that has to reload the media); -1 = none.
     property int resumeMs: -1
 
+    // engine.tracks read directly, not through the engineTracks binding: inside
+    // engine.onProbed that binding has not been re-evaluated yet and still holds
+    // the previous file's tracks (or none) — the automatic subtitle pick saw no
+    // tracks at all.
+    function tracksNow() {
+        return engine.valid ? engine.tracks : []
+    }
     function trackInfo(index) {
-        for (var i = 0; i < engineTracks.length; ++i)
-            if (engineTracks[i].index === index)
-                return engineTracks[i]
+        var tracks = tracksNow()
+        for (var i = 0; i < tracks.length; ++i)
+            if (tracks[i].index === index)
+                return tracks[i]
         return null
     }
     // What the backends play with no choice made: the stream flagged default,
@@ -103,8 +111,9 @@ Page {
     // that matter: one flagged track, or plain container order).
     function defaultTrackIndex(type) {
         var first = -1
-        for (var i = 0; i < engineTracks.length; ++i) {
-            var t = engineTracks[i]
+        var tracks = tracksNow()
+        for (var i = 0; i < tracks.length; ++i) {
+            var t = tracks[i]
             if (t.type !== type)
                 continue
             if (t.isDefault)
@@ -136,8 +145,9 @@ Page {
         page.subtitleFile = engine.hasVideo ? subtitles.findSidecar(page.source) : ""
         if (page.subtitleFile === "" && engine.hasVideo) {
             var pick = -1
-            for (var i = 0; i < engineTracks.length; ++i) {
-                var t = engineTracks[i]
+            var tracks = tracksNow()
+            for (var i = 0; i < tracks.length; ++i) {
+                var t = tracks[i]
                 if (t.type === "subtitle" && t.textual && (t.forced || (t.isDefault && pick < 0)))
                     pick = t.index
             }
@@ -387,6 +397,7 @@ Page {
 
     function routeAndPlay() {
         var b = targetBackend()
+        stallWatch.retries = 0
         player.stop(); vlc.stop(); droid.stop()
         errorLabel.text = ""
         page.autoFellBack = false   // fresh start: allow a fallback again
@@ -529,6 +540,45 @@ Page {
                     controls.visible = true
                     errorLabel.text = page.decodeErrorText(k)
                 }
+            }
+        }
+        // HW stall watchdog. The POCO's MediaTek decoder can wedge — take its input,
+        // reject every work item, never deliver a frame — and droidmedia doesn't tell
+        // us (no error callback; the codec only times out ~20 s later, silently). The
+        // pipeline then reads "Playing" forever on a frozen picture. If the position
+        // hasn't moved for 5 s, restart the HW pipeline at the same point (still
+        // hardware: the decoder is fine once recreated); after 3 restarts without
+        // progress, stop trying and say so — the Decoding menu can still pick software.
+        Timer {
+            id: stallWatch
+            interval: 1000
+            repeat: true
+            running: page.backend === "droid" && droid.state === DroidCodecBackend.Playing
+            property int lastPos: -1
+            property int still: 0
+            property int retries: 0
+            onRunningChanged: { lastPos = -1; still = 0 }
+            onTriggered: {
+                if (page.positionMs !== lastPos) {
+                    if (lastPos >= 0 && page.positionMs > lastPos)
+                        retries = 0           // it plays again
+                    lastPos = page.positionMs
+                    still = 0
+                    return
+                }
+                if (++still < 5)
+                    return
+                still = 0
+                if (retries >= 3) {
+                    console.warn("RT stall: HW decoder still frozen after 3 restarts")
+                    controls.visible = true
+                    errorLabel.text = qsTr("The hardware decoder stopped responding")
+                    return
+                }
+                retries++
+                console.warn("RT stall: no progress for 5 s at " + page.positionMs
+                             + " ms, restarting the HW decoder (" + retries + "/3)")
+                droid.seek(page.positionMs)
             }
         }
         // libVLC (CPU frames) renders here.

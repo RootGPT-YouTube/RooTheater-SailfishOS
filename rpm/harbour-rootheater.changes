@@ -1,3 +1,22 @@
+* Mon Oct 19 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.7.0-1
+- Hardware video no longer freezes after a series of seeks or track changes.
+  Every restart of the hardware decoder (each seek, each track change) leaked
+  its ~20 graphic buffers: droidmedia hands the app a reference to each output
+  buffer, to be given back, and it never was. After about ten restarts the
+  decoder could not get an output buffer any more and every new one froze on
+  its first frame. Measured on a POCO M4 Pro: 147 -> 328 buffers after 8
+  restarts before, steady at ~146 now.
+- Seeking is exact: playback resumes at the chosen point instead of the
+  keyframe before it (up to several seconds early). Frames and audio between
+  the two are decoded and thrown away.
+- Two quick track changes or seeks no longer hang the app: stopping the
+  pipeline now unblocks the thread feeding the decoder first.
+- Restarts of the hardware decoder are spaced at least 2 s apart (the latest
+  request wins), and if the picture ever stops moving for 5 s the hardware
+  decoder is restarted at the same point.
+- The subtitle track a file flags as default/forced is picked automatically
+  again (1.6.0 looked at the previous file's tracks).
+
 * Mon Oct 19 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.6.0-1
 - Tracks, as in VLC: a new button in the player picks the video track, the
   audio track (or none) and the subtitles: off, a track inside the file, or an

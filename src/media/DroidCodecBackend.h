@@ -24,9 +24,11 @@
 #include <QByteArray>
 #include <QImage>
 #include <QElapsedTimer>
+#include <QTimer>
 #include <atomic>
 #include <thread>
 #include <deque>
+#include <vector>
 #include <mutex>
 #include <condition_variable>
 
@@ -111,6 +113,9 @@ public:
     // thread): a decoded gralloc DroidMediaBuffer ready on the codec's output
     // queue. Public so the C callback can reach it; not meant for QML.
     void onFrameAvailable(_DroidMediaBuffer *buffer);
+    // buffer_created thunk (droidmedia thread): take ownership of the reference
+    // droidmedia hands us for each output buffer — see m_ownedBuffers.
+    void onBufferCreated(_DroidMediaBuffer *buffer);
 
 signals:
     void videoOutputChanged();
@@ -253,10 +258,39 @@ private:
     QString m_url;
     int m_wantVideo = -1;             // selectTracks(): -1 = best stream
     int m_wantAudio = -1;             // ...and -2 = audio off
+    // Accurate seek: the demuxer can only start at the keyframe BEFORE the target
+    // (up to several seconds early), so after a seek everything decoded before the
+    // target is thrown away — video frames go back to the decoder unshown, audio
+    // frames are never written — and playback resumes exactly where asked. Set by
+    // openInput(), -1 when the pipeline didn't start from a seek.
+    std::atomic<qint64> m_seekFloorUs{-1};
     qint64 m_startMs = 0;             // seek target applied by openInput on restart
     // True only while seek() is restarting the pipeline: stop() then leaves the
     // current frame on screen instead of blanking (GUI thread only).
     bool m_seeking = false;
+    // Restarts are spaced out. Every seek / track change recreates the HW decoder,
+    // and the POCO's MediaTek decoder (c2.mtk.avc.decoder) recreated again before
+    // the previous one had settled — 5 decoders in 10 s, the last 0.85 s after the
+    // one before — took its input, rejected every work item ("Invalid WorkBundle")
+    // and died 23 s later in a timeout that droidmedia never reports to us. So a
+    // restart asked for within kMinRestartGapMs of the last one is held back and
+    // done when the gap is over, with the latest target (GUI thread only).
+    // Output buffers of the current codec that we hold a reference to. When our
+    // buffer_created callback returns true, droidmedia gives US one strong
+    // reference per buffer, to be dropped with droid_media_buffer_destroy()
+    // (private.cpp, "give one to the buffer_created callback to release with
+    // droid_media_buffer_destroy"). Up to 1.6.0 we never did: every decoder
+    // (re)start — each seek, each track change — leaked its ~20 gralloc buffers
+    // (measured on the POCO: dmabuf fds 147 → 328 after 8 restarts), until the
+    // MediaTek decoder could no longer dequeue an output buffer ("fetch graphic
+    // block err = 22") and every new decoder froze on its first frame. Dropped in
+    // teardown(), once the codec is gone and nothing of ours still uses them.
+    std::mutex m_ownedMutex;
+    std::vector<_DroidMediaBuffer *> m_ownedBuffers;
+
+    QElapsedTimer m_sinceStart;       // since the last play()
+    QTimer m_restartTimer;            // fires the held-back restart
+    qint64 m_pendingSeekMs = -1;      // its target, -1 = none
     // Loop: when the demux hits EOF it seeks back to 0 and keeps feeding the SAME
     // decoder (no teardown), adding a growing offset to every fed timestamp so the
     // A/V clock stays monotonic across loops. Position display subtracts it.

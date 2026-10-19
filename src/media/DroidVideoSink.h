@@ -21,6 +21,7 @@
 
 #include <QQuickItem>
 #include <QMutex>
+#include <vector>
 #include <QVector>
 
 struct _DroidMediaBuffer;
@@ -48,6 +49,15 @@ public:
     // restarted under it, and blanking would flash black on every seek).
     Q_INVOKABLE void reset(bool clearPicture = true);
 
+    // The backend's references to a torn-down codec's output buffers (see
+    // DroidCodecBackend::m_ownedBuffers), handed over to be dropped with
+    // droid_media_buffer_destroy() only AFTER the EGLImages still waiting in
+    // m_deadImages are gone: a DroidMediaBuffer deletes itself when either of its
+    // two counts (RefBase strong / native incRef-decRef) hits zero, so dropping
+    // ours first would leave such an EGLImage pointing at freed memory. With no
+    // image pending they are dropped at once. Thread-safe.
+    void retireBuffers(const std::vector<_DroidMediaBuffer *> &buffers);
+
 protected:
     QSGNode *updatePaintNode(QSGNode *old, UpdatePaintNodeData *) override;
     void releaseResources() override;
@@ -63,6 +73,8 @@ private:
     _DroidMediaBuffer *m_current = nullptr;   // bound in the live EGLImage
     void *m_currentImage = nullptr;           // EGLImageKHR of m_current
     QVector<void *> m_deadImages;             // EGLImageKHRs awaiting render-thread destroy
+    std::vector<_DroidMediaBuffer *> m_retired; // dropped right after m_deadImages
+    void destroyRetired();                     // caller holds no lock
     // Set by reset(), cleared by the next presented buffer. Without it the scene
     // graph node survived a stop/track change and kept drawing the LAST frame of
     // the previous clip: harmless-looking until the page applied the NEXT clip's

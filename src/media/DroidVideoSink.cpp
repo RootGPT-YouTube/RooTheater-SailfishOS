@@ -140,6 +140,15 @@ DroidVideoSink::~DroidVideoSink()
     // GL resources are torn down on the render thread (releaseResources); here we
     // just make sure no droidmedia buffers are still pinned.
     reset();
+    // Retired references can go too unless an EGLImage may still use them (the
+    // render thread never got to destroy it): then leaking a few beats a crash.
+    bool safe;
+    {
+        QMutexLocker lock(&m_mutex);
+        safe = m_deadImages.isEmpty() && !m_currentImage;
+    }
+    if (safe)
+        destroyRetired();
 }
 
 void DroidVideoSink::releaseBuffer(_DroidMediaBuffer *buffer)
@@ -185,6 +194,33 @@ void DroidVideoSink::reset(bool clearPicture)
     QMetaObject::invokeMethod(this, "requestUpdate", Qt::QueuedConnection);
 }
 
+void DroidVideoSink::retireBuffers(const std::vector<_DroidMediaBuffer *> &buffers)
+{
+    if (buffers.empty())
+        return;
+    bool now;
+    {
+        QMutexLocker lock(&m_mutex);
+        m_retired.insert(m_retired.end(), buffers.begin(), buffers.end());
+        now = m_deadImages.isEmpty();   // no EGLImage can still refer to them
+    }
+    if (now)
+        destroyRetired();
+    else
+        QMetaObject::invokeMethod(this, "requestUpdate", Qt::QueuedConnection);
+}
+
+void DroidVideoSink::destroyRetired()
+{
+    std::vector<_DroidMediaBuffer *> retired;
+    {
+        QMutexLocker lock(&m_mutex);
+        retired.swap(m_retired);
+    }
+    for (_DroidMediaBuffer *b : retired)
+        droid_media_buffer_destroy(b);
+}
+
 QSGNode *DroidVideoSink::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
 {
     // Pick up the newest decoded buffer (if any) + any EGLImages abandoned by
@@ -202,6 +238,7 @@ QSGNode *DroidVideoSink::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *
     if (pEglDestroyImageKHR)
         for (void *img : dead)
             pEglDestroyImageKHR(eglGetCurrentDisplay(), img);
+    destroyRetired();   // the images that referred to them are gone now
 
     QSGGeometryNode *node = static_cast<QSGGeometryNode *>(oldNode);
 
@@ -318,6 +355,7 @@ void DroidVideoSink::releaseResources()
     if (pEglDestroyImageKHR)
         for (void *img : dead)
             pEglDestroyImageKHR(dpy, img);
+    destroyRetired();
     if (m_texture) {
         glDeleteTextures(1, &m_texture);
         m_texture = 0;
