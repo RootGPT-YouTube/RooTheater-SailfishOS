@@ -966,6 +966,80 @@
     </message>
 </context>
 <context>
+    <name>TracksPage</name>
+    <message>
+        <source>Track %1</source>
+        <translation>Traccia %1</translation>
+    </message>
+    <message>
+        <source>mono</source>
+        <translation>mono</translation>
+    </message>
+    <message>
+        <source>stereo</source>
+        <translation>stereo</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n channels</source>
+        <translation>
+            <numerusform>%n canale</numerusform>
+            <numerusform>%n canali</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>forced</source>
+        <translation>forzati</translation>
+    </message>
+    <message>
+        <source>default</source>
+        <translation>predefinita</translation>
+    </message>
+    <message>
+        <source>Tracks</source>
+        <translation>Tracce</translation>
+    </message>
+    <message>
+        <source>Video</source>
+        <translation>Video</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>Audio</translation>
+    </message>
+    <message>
+        <source>No audio</source>
+        <translation>Nessun audio</translation>
+    </message>
+    <message>
+        <source>Subtitles</source>
+        <translation>Sottotitoli</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Disattivati</translation>
+    </message>
+    <message>
+        <source>No subtitles found in this file</source>
+        <translation>Nessun sottotitolo trovato in questo file</translation>
+    </message>
+    <message>
+        <source>External file</source>
+        <translation>File esterno</translation>
+    </message>
+    <message>
+        <source>Load subtitle file…</source>
+        <translation>Carica file di sottotitoli…</translation>
+    </message>
+    <message>
+        <source>SubRip (.srt), WebVTT (.vtt) and SubStation (.ass, .ssa) files. A file next to the video with the same name is loaded automatically.</source>
+        <translation>File SubRip (.srt), WebVTT (.vtt) e SubStation (.ass, .ssa). Un file accanto al video con lo stesso nome viene caricato da solo.</translation>
+    </message>
+    <message>
+        <source>Select a subtitle file</source>
+        <translation>Scegli un file di sottotitoli</translation>
+    </message>
+</context>
+<context>
     <name>YouTubePage</name>
     <message>
         <source>Added: %1</source>

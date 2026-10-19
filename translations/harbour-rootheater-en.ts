@@ -966,6 +966,80 @@
     </message>
 </context>
 <context>
+    <name>TracksPage</name>
+    <message>
+        <source>Track %1</source>
+        <translation>Track %1</translation>
+    </message>
+    <message>
+        <source>mono</source>
+        <translation>mono</translation>
+    </message>
+    <message>
+        <source>stereo</source>
+        <translation>stereo</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n channels</source>
+        <translation>
+            <numerusform>%n channel</numerusform>
+            <numerusform>%n channels</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>forced</source>
+        <translation>forced</translation>
+    </message>
+    <message>
+        <source>default</source>
+        <translation>default</translation>
+    </message>
+    <message>
+        <source>Tracks</source>
+        <translation>Tracks</translation>
+    </message>
+    <message>
+        <source>Video</source>
+        <translation>Video</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>Audio</translation>
+    </message>
+    <message>
+        <source>No audio</source>
+        <translation>No audio</translation>
+    </message>
+    <message>
+        <source>Subtitles</source>
+        <translation>Subtitles</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Off</translation>
+    </message>
+    <message>
+        <source>No subtitles found in this file</source>
+        <translation>No subtitles found in this file</translation>
+    </message>
+    <message>
+        <source>External file</source>
+        <translation>External file</translation>
+    </message>
+    <message>
+        <source>Load subtitle file…</source>
+        <translation>Load subtitle file…</translation>
+    </message>
+    <message>
+        <source>SubRip (.srt), WebVTT (.vtt) and SubStation (.ass, .ssa) files. A file next to the video with the same name is loaded automatically.</source>
+        <translation>SubRip (.srt), WebVTT (.vtt) and SubStation (.ass, .ssa) files. A file next to the video with the same name is loaded automatically.</translation>
+    </message>
+    <message>
+        <source>Select a subtitle file</source>
+        <translation>Select a subtitle file</translation>
+    </message>
+</context>
+<context>
     <name>YouTubePage</name>
     <message>
         <source>Added: %1</source>

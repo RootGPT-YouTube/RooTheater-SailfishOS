@@ -1,3 +1,16 @@
+* Mon Oct 19 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.6.0-1
+- Tracks, as in VLC: a new button in the player picks the video track, the
+  audio track (or none) and the subtitles: off, a track inside the file, or an
+  external .srt/.vtt/.ass/.ssa file. A subtitle file next to the video with the
+  same name is loaded by itself. Text subtitles are drawn by the app over any
+  decoder (hardware included), in UTF-8, UTF-16 or Windows-1252; bitmap ones
+  (DVD/PGS/DVB) move playback to libVLC, the only decoder that draws them.
+- Changing the Decoding mode now carries on from the same point instead of
+  starting the video over.
+- New steel icon, in the style of RooTundra and RooTelegram's latest.
+- The app cover shows the video's title, its thumbnail and the play/pause and
+  +10 s buttons during YouTube playback too.
+
 * Fri Sep 04 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.2.0-1
 - YouTube: import a hundred channels and you get a hundred avatars. Until now
   the backfill filled exactly one more per app start, so a large import left the

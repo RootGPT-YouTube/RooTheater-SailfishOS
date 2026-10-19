@@ -72,6 +72,121 @@ Page {
     // when the user explicitly forced "Hardware" in the Decoding selector.
     property bool autoFellBack: false
 
+    // ── Track choices (TracksPage), VLC-style ────────────────────────────────
+    // ffmpeg stream indices from engine.tracks; -1 = automatic (the backend's
+    // pick), audio -2 = no audio. Subtitles: an embedded track (subtitleTrack) or
+    // an external file (subtitleFile, wins over the track). Text subtitles are
+    // drawn by SubtitleView over any backend; bitmap ones (DVD/PGS/DVB) only by
+    // libVLC, so picking one moves playback there. Not persistent: chosen afresh
+    // for every file (tracksFor), kept across loops, seeks and backend changes.
+    property int videoTrack: -1
+    property int audioTrack: -1
+    property int subtitleTrack: -1
+    property string subtitleFile: ""
+    property string tracksFor: ""
+    readonly property var engineTracks: engine.valid ? engine.tracks : []
+    readonly property int defaultVideoIndex: defaultTrackIndex("video")
+    readonly property int defaultAudioIndex: defaultTrackIndex("audio")
+    readonly property bool subtitlesFailed: subtitles.failed
+    // Playhead to return to once a restarted backend plays again (a track or
+    // Decoding change that has to reload the media); -1 = none.
+    property int resumeMs: -1
+
+    function trackInfo(index) {
+        for (var i = 0; i < engineTracks.length; ++i)
+            if (engineTracks[i].index === index)
+                return engineTracks[i]
+        return null
+    }
+    // What the backends play with no choice made: the stream flagged default,
+    // else the first of its type (ffmpeg's av_find_best_stream agrees on files
+    // that matter: one flagged track, or plain container order).
+    function defaultTrackIndex(type) {
+        var first = -1
+        for (var i = 0; i < engineTracks.length; ++i) {
+            var t = engineTracks[i]
+            if (t.type !== type)
+                continue
+            if (t.isDefault)
+                return t.index
+            if (first < 0)
+                first = t.index
+        }
+        return first
+    }
+    function orderOf(index) {
+        var t = trackInfo(index)
+        return t ? t.order : -1
+    }
+    function subtitleIsBitmap() {
+        if (subtitleFile !== "" || subtitleTrack < 0)
+            return false
+        var t = trackInfo(subtitleTrack)
+        return t !== null && !t.textual
+    }
+    // New file: automatic tracks, and subtitles like VLC — a file next to the
+    // video with its name, else a text track the container flags forced/default.
+    function resetTracksIfNew() {
+        if (page.tracksFor === page.source)
+            return
+        page.tracksFor = page.source
+        page.videoTrack = -1
+        page.audioTrack = -1
+        page.subtitleTrack = -1
+        page.subtitleFile = engine.hasVideo ? subtitles.findSidecar(page.source) : ""
+        if (page.subtitleFile === "" && engine.hasVideo) {
+            var pick = -1
+            for (var i = 0; i < engineTracks.length; ++i) {
+                var t = engineTracks[i]
+                if (t.type === "subtitle" && t.textual && (t.forced || (t.isDefault && pick < 0)))
+                    pick = t.index
+            }
+            page.subtitleTrack = pick
+        }
+    }
+    // Hand the choices to both backends (whichever starts next uses them).
+    function pushTrackWants() {
+        droid.selectTracks(page.videoTrack, page.audioTrack)
+        vlc.selectTracks(page.videoTrack < 0 ? -1 : orderOf(page.videoTrack),
+                         page.audioTrack === -2 ? -2 : (page.audioTrack < 0 ? -1 : orderOf(page.audioTrack)),
+                         subtitleIsBitmap() ? orderOf(page.subtitleTrack) : -2)
+    }
+    // Apply a choice made while playing: on the same backend when it can (libVLC
+    // switches live, droidmedia restarts at the playhead), else reload the media
+    // on the backend that can and come back to the same point.
+    function applyTracks() {
+        var want = targetBackend()
+        if (page.autoFellBack && page.backend === "vlc" && want === "droid")
+            want = "vlc"       // HW already failed on this file: don't go back
+        if (want !== page.backend) {
+            page.resumeMs = page.positionMs
+            routeAndPlay()
+            return
+        }
+        pushTrackWants()
+    }
+    function chooseVideoTrack(index) {
+        if (index === page.videoTrack) return
+        page.videoTrack = index
+        applyTracks()
+    }
+    function chooseAudioTrack(index) {
+        if (index === page.audioTrack) return
+        page.audioTrack = index
+        applyTracks()
+    }
+    function chooseSubtitleTrack(index) {
+        if (index === page.subtitleTrack && page.subtitleFile === "") return
+        page.subtitleFile = ""
+        page.subtitleTrack = index
+        applyTracks()
+    }
+    function chooseSubtitleFile(path) {
+        page.subtitleTrack = -1
+        page.subtitleFile = path
+        applyTracks()
+    }
+
     // ── Unified control surface over whichever backend is active ─────────────
     readonly property bool isPlaying: backend === "vlc" ? vlc.playing
         : backend === "droid" ? droid.playing
@@ -182,10 +297,19 @@ Page {
     // Cover CoverAction taps routed back to the live player.
     Connections {
         target: coverState
-        onPlayPauseRequested: page.togglePlay()
-        onNextRequested: page.albumMode ? page.playNext() : page.step(10000)
+        // only while the cover is ours (not YouTube's, see YtPlayerPage)
+        onPlayPauseRequested: if (coverState.mode === "media") page.togglePlay()
+        onNextRequested: if (coverState.mode === "media") { page.albumMode ? page.playNext() : page.step(10000) }
     }
-    onIsPlayingChanged: if (coverState.mode === "media") coverState.playing = page.isPlaying
+    onIsPlayingChanged: {
+        if (coverState.mode === "media")
+            coverState.playing = page.isPlaying
+        if (page.isPlaying && page.resumeMs > 0) {   // a reload: back to the playhead
+            var t = page.resumeMs
+            page.resumeMs = -1
+            page.seekTo(t)
+        }
+    }
     onSourceChanged: pushCover()
 
     // Keep the display on while a VIDEO is actually playing; audio-only playback
@@ -205,11 +329,17 @@ Page {
         // queued after it — audio always plays on the engine's auto pick.
         if (!engine.hasVideo)
             return page.recommendedBackendStr
-        if (page.decodeOverride === "hw")
-            return page.droidEnabled ? "droid" : "qt"
-        if (page.decodeOverride === "sw")
+        // Only libVLC draws bitmap subtitles; QtMultimedia can't switch tracks.
+        if (subtitleIsBitmap())
             return "vlc"
-        return page.recommendedBackendStr
+        var b = page.recommendedBackendStr
+        if (page.decodeOverride === "hw")
+            b = page.droidEnabled ? "droid" : "qt"
+        else if (page.decodeOverride === "sw")
+            b = "vlc"
+        if (b === "qt" && (page.videoTrack !== -1 || page.audioTrack !== -1))
+            return "vlc"
+        return b
     }
 
     // Friendly name of the backend ACTUALLY playing (page.backend) — not the engine's
@@ -245,10 +375,13 @@ Page {
     // it rejects, or a container quirk), retry once on libVLC before showing an error.
     function fallbackToSoftware() {
         page.autoFellBack = true
+        if (page.resumeMs < 0 && page.positionMs > 0)
+            page.resumeMs = page.positionMs   // failed mid-way (e.g. a track change)
         player.stop(); vlc.stop(); droid.stop()
         errorLabel.text = ""
         page.backend = "vlc"
         page.videoRotation = 0
+        pushTrackWants()
         vlc.play(page.source)
     }
 
@@ -258,6 +391,7 @@ Page {
         errorLabel.text = ""
         page.autoFellBack = false   // fresh start: allow a fallback again
         page.backend = b
+        pushTrackWants()
         // qt/vlc honour the container's display rotation; the raw HW droid path
         // doesn't, so apply it ourselves there. Others start upright.
         page.videoRotation = (b === "droid") ? engine.rotation : 0
@@ -296,9 +430,15 @@ Page {
             source = queue[trackIndex]
     }
 
+    // Probe once: the page turns Active again when TracksPage is closed, and
+    // that must not restart the media.
+    property bool started: false
     onStatusChanged: {
         if (status === PageStatus.Active && source !== "") {
-            engine.probe(source) // playback starts in engine.onProbed
+            if (!page.started) {
+                page.started = true
+                engine.probe(source) // playback starts in engine.onProbed
+            }
             pushCover()
         }
     }
@@ -316,6 +456,7 @@ Page {
                 page.recommendedBackendStr = "droid"
             else
                 page.recommendedBackendStr = "qt"
+            page.resetTracksIfNew()
             page.routeAndPlay()
             page.pushCover()   // refresh cover subtitle now hasVideo is known
         }
@@ -409,6 +550,25 @@ Page {
             visible: page.backend === "droid"
         }
     }   // PinchZoom
+
+    // Text subtitles over whichever backend plays, clear of the controls.
+    SubtitleView {
+        id: subtitles
+        anchors {
+            left: parent.left; right: parent.right
+            bottom: parent.bottom
+            bottomMargin: controls.visible ? controlsColumn.height + 2 * Theme.paddingLarge
+                                           : 2 * Theme.paddingLarge
+        }
+        height: parent.height / 2
+        visible: engine.valid && engine.hasVideo
+        file: page.subtitleFile
+        source: page.source
+        streamIndex: page.subtitleFile === "" && page.subtitleTrack >= 0
+                     && !page.subtitleIsBitmap() ? page.subtitleTrack : -1
+        position: page.positionMs
+        fontPixelSize: Math.min(page.width, page.height) * 0.05
+    }
 
     // Audio-only media: the embedded cover art (or a ♪ placeholder when the file
     // has none) with the track's title / artist / album underneath — same data
@@ -612,6 +772,13 @@ Page {
                     highlighted: page.videoRotation !== 0
                     onClicked: page.videoRotation = (page.videoRotation + 90) % 360
                 }
+                // Video / audio / subtitle tracks and subtitle files (TracksPage).
+                IconButton {
+                    visible: engine.valid && engine.hasVideo
+                    icon.source: "image://theme/icon-m-chat"
+                    highlighted: page.subtitleTrack >= 0 || page.subtitleFile !== ""
+                    onClicked: pageStack.push(Qt.resolvedUrl("TracksPage.qml"), { player: page })
+                }
             }
 
             Label {
@@ -651,8 +818,10 @@ Page {
                     if (ov === page.decodeOverride)
                         return
                     page.decodeOverride = ov
-                    if (engine.valid)
+                    if (engine.valid) {
+                        page.resumeMs = page.positionMs   // carry on from here
                         page.routeAndPlay()
+                    }
                 }
             }
         }

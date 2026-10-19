@@ -32,6 +32,7 @@
 
 #include "media/MediaEngine.h"
 #include "media/VideoSurface.h"
+#include "media/SubtitleView.h"
 #include "media/CoverImageProvider.h"
 #include "media/TrackCoverProvider.h"
 #include "media/TagReader.h"
@@ -69,6 +70,8 @@ int main(int argc, char *argv[])
     qmlRegisterType<MediaEngine>("RooTheater.Media", 1, 0, "MediaEngine");
     // Shared CPU-buffer video sink for the libVLC and droidmedia backends.
     qmlRegisterType<VideoSurface>("RooTheater.Media", 1, 0, "VideoSurface");
+    // Text subtitles (external file or embedded track) drawn over any backend.
+    qmlRegisterType<SubtitleView>("RooTheater.Media", 1, 0, "SubtitleView");
     // Media gallery: storage roots + the folder-grouped image/video model.
     qmlRegisterType<StorageRoots>("RooTheater.Media", 1, 0, "StorageRoots");
     qmlRegisterType<MediaGalleryModel>("RooTheater.Media", 1, 0, "MediaGalleryModel");

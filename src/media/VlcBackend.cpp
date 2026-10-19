@@ -82,6 +82,9 @@ VlcBackend::VlcBackend(QObject *parent)
         // chain; a PULSE_PROP env override is context-level and loses to the
         // stream-level role libVLC sets). QtMultimedia sets x-maemo itself.
         "--role=x-maemo",
+        // External subtitle files are SubtitleView's (the player looks for them
+        // and offers a picker); libVLC finding one on its own would draw nothing.
+        "--no-sub-autodetect-file",
     };
     m_vlc = libvlc_new(sizeof(args) / sizeof(args[0]), args);
     if (m_vlc) {
@@ -136,6 +139,8 @@ void VlcBackend::play(const QString &url)
     if (!media)
         return;
 
+    m_tracksApplied = false;
+
     libvlc_media_player_set_media(m_player, media);
     libvlc_media_release(media);
 
@@ -188,6 +193,60 @@ void VlcBackend::seek(qlonglong ms)
         libvlc_media_player_set_time(m_player, static_cast<libvlc_time_t>(ms));
 }
 
+void VlcBackend::selectTracks(int videoOrder, int audioOrder, int spuOrder)
+{
+    m_wantVideo = videoOrder;
+    m_wantAudio = audioOrder;
+    m_wantSpu = spuOrder;
+    m_tracksApplied = (m_state == Playing || m_state == Paused) && applyTracks();
+}
+
+namespace {
+// libVLC id of the n-th real track in a description list (the "Disable" entry
+// has id -1 and doesn't count); -1 when there is no such track.
+int nthTrackId(libvlc_track_description_t *list, int n)
+{
+    int id = -1;
+    for (libvlc_track_description_t *t = list; t; t = t->p_next) {
+        if (t->i_id < 0)
+            continue;
+        if (n-- == 0) { id = t->i_id; break; }
+    }
+    return id;
+}
+}
+
+bool VlcBackend::applyTracks()
+{
+    if (!m_player)
+        return false;
+    // Tracks appear once the input has opened its elementary streams; until
+    // then (no audio/video track yet) try again on the next poll.
+    if (libvlc_video_get_track_count(m_player) <= 0 && libvlc_audio_get_track_count(m_player) <= 0)
+        return false;
+
+    if (m_wantVideo != -1) {
+        libvlc_track_description_t *l = libvlc_video_get_track_description(m_player);
+        const int id = m_wantVideo == -2 ? -1 : nthTrackId(l, m_wantVideo);
+        if (m_wantVideo == -2 || id >= 0)
+            libvlc_video_set_track(m_player, id);
+        libvlc_track_description_list_release(l);
+    }
+    if (m_wantAudio != -1) {
+        libvlc_track_description_t *l = libvlc_audio_get_track_description(m_player);
+        const int id = m_wantAudio == -2 ? -1 : nthTrackId(l, m_wantAudio);
+        if (m_wantAudio == -2 || id >= 0)
+            libvlc_audio_set_track(m_player, id);
+        libvlc_track_description_list_release(l);
+    }
+    if (m_wantSpu != -1) {
+        libvlc_track_description_t *l = libvlc_video_get_spu_description(m_player);
+        libvlc_video_set_spu(m_player, m_wantSpu == -2 ? -1 : nthTrackId(l, m_wantSpu));
+        libvlc_track_description_list_release(l);
+    }
+    return true;
+}
+
 void VlcBackend::poll()
 {
     if (!m_player)
@@ -208,6 +267,9 @@ void VlcBackend::poll()
         m_seekable = seek;
         emit seekableChanged();
     }
+
+    if (!m_tracksApplied && (m_state == Playing || m_state == Paused))
+        m_tracksApplied = applyTracks();
 
     switch (libvlc_media_player_get_state(m_player)) {
     case libvlc_Opening:    setState(Opening); break;

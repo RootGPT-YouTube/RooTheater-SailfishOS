@@ -22,6 +22,7 @@
 #include <QObject>
 #include <QString>
 #include <QFutureWatcher>
+#include <QVariantList>
 
 #include "MediaProbe.h"
 
@@ -54,6 +55,11 @@ class MediaEngine : public QObject
     Q_PROPERTY(QString coverSource READ coverSource NOTIFY probed)
     Q_PROPERTY(Backend recommendedBackend READ recommendedBackend NOTIFY probed)
     Q_PROPERTY(QString recommendedBackendName READ recommendedBackendName NOTIFY probed)
+    // The streams of the probed source for the track picker: one map per stream
+    // { index, type ("video"|"audio"|"subtitle"), order (position among the
+    // streams of its type), codec, language (display name, "" if untagged),
+    // title, isDefault, forced, textual, width, height, channels }.
+    Q_PROPERTY(QVariantList tracks READ tracks NOTIFY probed)
 
 public:
     // Which engine layer should handle a source. Mirrors the layered design:
@@ -89,6 +95,11 @@ public:
     QString coverSource() const { return m_coverSource; }
     Backend recommendedBackend() const { return m_backend; }
     QString recommendedBackendName() const;
+    QVariantList tracks() const;
+
+    // Display name of an ISO 639-1/639-2 language code in the UI language
+    // ("ita" → "italiano"); the code itself when unknown.
+    static QString languageName(const QString &code);
 
     // Probe `url` asynchronously (ffmpeg demux/probe runs on a worker thread).
     // Emits probed() when the result and recommendedBackend are ready.

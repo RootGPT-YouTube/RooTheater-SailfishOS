@@ -324,6 +324,17 @@ void DroidCodecBackend::seek(qlonglong ms)
     emit positionChanged();
 }
 
+void DroidCodecBackend::selectTracks(int videoStream, int audioStream)
+{
+    if (videoStream == m_wantVideo && audioStream == m_wantAudio)
+        return;
+    m_wantVideo = videoStream;
+    m_wantAudio = audioStream;
+    // Restart at the playhead with the new streams (like a seek, it resumes
+    // playback if paused); a stopped pipeline picks them up on its next play().
+    seek(m_positionMs);
+}
+
 // ── ffmpeg demux + droidmedia decode (worker thread) ─────────────────────────
 
 bool DroidCodecBackend::openInput(const QString &url)
@@ -350,7 +361,7 @@ bool DroidCodecBackend::openInput(const QString &url)
     if (avformat_find_stream_info(m_fmt, nullptr) < 0)
         { m_errorKind = ErrDemux; qWarning("DroidCodec: find_stream_info failed"); return false; }
 
-    m_videoStream = av_find_best_stream(m_fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+    m_videoStream = av_find_best_stream(m_fmt, AVMEDIA_TYPE_VIDEO, m_wantVideo, -1, nullptr, 0);
     if (m_videoStream < 0)
         { m_errorKind = ErrUnsupported; qWarning("DroidCodec: no video stream"); return false; }
 
@@ -477,7 +488,9 @@ bool DroidCodecBackend::openInput(const QString &url)
 
 bool DroidCodecBackend::openAudio()
 {
-    m_audioStream = av_find_best_stream(m_fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (m_wantAudio == -2)
+        { qInfo("DroidCodec: audio track off"); return false; }
+    m_audioStream = av_find_best_stream(m_fmt, AVMEDIA_TYPE_AUDIO, m_wantAudio, -1, nullptr, 0);
     if (m_audioStream < 0)
         { qInfo("DroidCodec: no audio stream"); return false; }
 

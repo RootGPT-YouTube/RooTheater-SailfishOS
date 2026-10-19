@@ -21,6 +21,8 @@
 
 #include <QtConcurrent/QtConcurrentRun>
 #include <QImage>
+#include <QLocale>
+#include <QHash>
 
 #ifdef HAVE_DROIDMEDIA
 #include "DroidCodec.h"
@@ -115,4 +117,64 @@ QString MediaEngine::recommendedBackendName() const
     case Auto:
     default:           return QStringLiteral("auto");
     }
+}
+
+QVariantList MediaEngine::tracks() const
+{
+    QVariantList out;
+    int order[3] = {0, 0, 0};
+    for (const MediaProbe::Result::Track &t : m_result.tracks) {
+        QVariantMap m;
+        m.insert(QStringLiteral("index"), t.index);
+        m.insert(QStringLiteral("type"), t.type == MediaProbe::Result::VideoTrack ? QStringLiteral("video")
+                                       : t.type == MediaProbe::Result::AudioTrack ? QStringLiteral("audio")
+                                                                                  : QStringLiteral("subtitle"));
+        m.insert(QStringLiteral("order"), order[t.type]++);
+        m.insert(QStringLiteral("codec"), t.codec);
+        m.insert(QStringLiteral("language"), t.language.isEmpty() ? QString() : languageName(t.language));
+        m.insert(QStringLiteral("title"), t.title);
+        m.insert(QStringLiteral("isDefault"), t.isDefault);
+        m.insert(QStringLiteral("forced"), t.forced);
+        m.insert(QStringLiteral("textual"), t.textual);
+        m.insert(QStringLiteral("width"), t.width);
+        m.insert(QStringLiteral("height"), t.height);
+        m.insert(QStringLiteral("channels"), t.channels);
+        out.append(m);
+    }
+    return out;
+}
+
+QString MediaEngine::languageName(const QString &code)
+{
+    // Containers tag tracks with ISO 639-2 (mostly the bibliographic "B" codes:
+    // ger, fre, chi...), which QLocale doesn't take; map the common ones to 639-1.
+    static const QHash<QString, QString> iso6392 = {
+        {"ita", "it"}, {"eng", "en"}, {"fre", "fr"}, {"fra", "fr"}, {"ger", "de"},
+        {"deu", "de"}, {"spa", "es"}, {"por", "pt"}, {"dut", "nl"}, {"nld", "nl"},
+        {"rus", "ru"}, {"pol", "pl"}, {"cze", "cs"}, {"ces", "cs"}, {"slo", "sk"},
+        {"slk", "sk"}, {"hun", "hu"}, {"rum", "ro"}, {"ron", "ro"}, {"gre", "el"},
+        {"ell", "el"}, {"tur", "tr"}, {"ara", "ar"}, {"heb", "he"}, {"hin", "hi"},
+        {"jpn", "ja"}, {"kor", "ko"}, {"chi", "zh"}, {"zho", "zh"}, {"swe", "sv"},
+        {"nor", "nb"}, {"nob", "nb"}, {"dan", "da"}, {"fin", "fi"}, {"est", "et"},
+        {"ukr", "uk"}, {"bul", "bg"}, {"hrv", "hr"}, {"srp", "sr"}, {"slv", "sl"},
+        {"cat", "ca"}, {"lat", "la"}, {"tha", "th"}, {"vie", "vi"}, {"ind", "id"},
+        {"may", "ms"}, {"msa", "ms"}, {"per", "fa"}, {"fas", "fa"}, {"lit", "lt"},
+        {"lav", "lv"}, {"ice", "is"}, {"isl", "is"}, {"glg", "gl"}, {"baq", "eu"},
+        {"eus", "eu"},
+    };
+    const QString c = code.trimmed().toLower();
+    const QString two = c.length() == 3 ? iso6392.value(c) : c;
+    if (two.length() == 2) {
+        const QLocale loc(two);
+        if (loc.language() != QLocale::C) {
+            const QString n = QLocale().languageToString(loc.language());
+            // languageToString is English; prefer the language's own name, which
+            // reads right in any UI ("italiano", "English", "Deutsch").
+            // ("en" alone resolves to en_US, whose native name is "American English")
+            const QString native = two == QLatin1String("en") ? QStringLiteral("English")
+                                                              : loc.nativeLanguageName();
+            return native.isEmpty() ? n : native;
+        }
+    }
+    return code;
 }

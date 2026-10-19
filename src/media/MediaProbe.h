@@ -22,6 +22,7 @@
 #include <QString>
 #include <QByteArray>
 #include <QVariantMap>
+#include <QList>
 
 struct AVDictionary; // opaque; keeps ffmpeg headers out of this interface
 
@@ -57,7 +58,30 @@ public:
         QString audioCodec;         // e.g. "aac", "opus"
 
         QByteArray coverArt;        // embedded cover image bytes (JPEG/PNG), empty if none
+
+        // Every selectable stream, in container order (cover art excluded), for
+        // the player's track picker. `index` is the ffmpeg stream index, which
+        // the droidmedia backend and SubtitleView use directly.
+        enum TrackType { VideoTrack, AudioTrack, SubtitleTrack };
+        struct Track {
+            int index = -1;
+            TrackType type = VideoTrack;
+            QString codec;          // avcodec short name
+            QString language;       // ISO 639 code from the container, "" if untagged
+            QString title;          // the container's track name, "" if none
+            bool isDefault = false; // container "default" flag
+            bool forced = false;    // container "forced" flag (subtitles)
+            bool textual = false;   // subtitle carried as text (SRT/ASS/WebVTT/tx3g)
+            int width = 0;          // video
+            int height = 0;
+            int channels = 0;       // audio
+        };
+        QList<Track> tracks;
     };
+
+    // Subtitle codecs whose packets are plain (UTF-8) text that SubtitleView
+    // can read without an ffmpeg decoder (the vendored ffmpeg has none).
+    static bool isTextSubtitle(const QString &codec);
 
     // Open and inspect `url`. Network probing requires the network protocols to
     // be compiled into ffmpeg (they are, see scripts/build-ffmpeg.sh). Blocking

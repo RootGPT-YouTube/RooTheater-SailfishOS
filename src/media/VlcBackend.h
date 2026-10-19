@@ -71,6 +71,14 @@ public:
     Q_INVOKABLE void togglePause();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void seek(qlonglong ms);
+    // Track picker. Each argument is the track's position among the streams of
+    // its type (libVLC numbers tracks its own way, but lists them in container
+    // order like ffmpeg does); -1 = leave libVLC's choice, -2 = off. Subtitles
+    // default to off: libVLC only draws the bitmap ones (DVD/PGS/DVB — there is
+    // no text renderer in the bundle), text subtitles are SubtitleView's job.
+    // Applied as soon as the tracks exist, and again after every play(); the
+    // player page owns the choice and sets it per file.
+    Q_INVOKABLE void selectTracks(int videoOrder, int audioOrder, int spuOrder);
 
 signals:
     void videoOutputChanged();
@@ -93,6 +101,12 @@ private:
     static void displayCb(void *opaque, void *picture);
 
     void setState(State s);
+    bool applyTracks();               // true once the wanted tracks are set
+
+    int m_wantVideo = -1;
+    int m_wantAudio = -1;
+    int m_wantSpu = -2;
+    bool m_tracksApplied = false;
 
     libvlc_instance_t *m_vlc = nullptr;
     libvlc_media_player_t *m_player = nullptr;

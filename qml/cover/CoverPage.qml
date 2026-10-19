@@ -7,9 +7,12 @@ CoverBackground {
 
     // Idle and media share the same look: a title + subtitle at the top, and the
     // greyscale "RT" app icon filling the area below.
-    readonly property bool branding: coverState.mode === "none" || coverState.mode === "media"
+    // "youtube" (YtPlayerPage) looks like media: the video's title, and its
+    // thumbnail from YouTube as the art.
+    readonly property bool playable: coverState.mode === "media" || coverState.mode === "youtube"
+    readonly property bool branding: coverState.mode === "none" || cover.playable
     // A track/playlist with embedded cover art → show it instead of the app icon.
-    readonly property bool hasArt: coverState.mode === "media" && coverState.coverArt !== ""
+    readonly property bool hasArt: cover.playable && coverState.coverArt !== ""
 
     // ── Header: app name / track title + subtitle ────────────────────────────
     Column {
@@ -26,7 +29,7 @@ CoverBackground {
         Label {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: coverState.mode === "media" ? coverState.title : "RooTheater"
+            text: cover.playable ? coverState.title : "RooTheater"
             font.pixelSize: Theme.fontSizeLarge
             color: Theme.highlightColor
             wrapMode: Text.Wrap
@@ -36,7 +39,7 @@ CoverBackground {
         Label {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: coverState.mode === "media" ? coverState.subtitle : qsTr("Multimedia player")
+            text: cover.playable ? coverState.subtitle : qsTr("Multimedia player")
             font.pixelSize: Theme.fontSizeExtraSmall
             color: Theme.secondaryColor
             wrapMode: Text.Wrap
@@ -64,7 +67,7 @@ CoverBackground {
             width: cover.hasArt ? parent.width : Math.min(parent.width, parent.height) * 0.8
             height: cover.hasArt ? parent.height : width
             source: cover.hasArt ? coverState.coverArt
-                                 : Qt.resolvedUrl("../images/harbour-rootheater.svg")
+                                 : Qt.resolvedUrl("../images/harbour-rootheater.png")
             sourceSize.width: width
             sourceSize.height: height
             fillMode: cover.hasArt ? Image.PreserveAspectCrop : Image.PreserveAspectFit
@@ -91,9 +94,10 @@ CoverBackground {
         cache: false
     }
 
-    // Media controls (Sailfish covers allow up to two): play/pause + next.
+    // Media controls (Sailfish covers allow up to two): play/pause + next (for a
+    // video, and for YouTube, "next" is +10 s).
     CoverActionList {
-        enabled: coverState.mode === "media"
+        enabled: cover.playable
         CoverAction {
             iconSource: coverState.playing ? "image://theme/icon-cover-pause"
                                            : "image://theme/icon-cover-play"

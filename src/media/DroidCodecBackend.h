@@ -101,6 +101,11 @@ public:
     Q_INVOKABLE void togglePause();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void seek(qlonglong ms);
+    // Track picker: play these ffmpeg stream indices instead of the best ones
+    // (-1 = automatic; audio -2 = no audio). Applied by restarting the pipeline
+    // at the current position, the same way seek() does; when stopped, kept for
+    // the next play(). The player page owns the choice and sets it per file.
+    Q_INVOKABLE void selectTracks(int videoStream, int audioStream);
 
     // Called from the droidmedia buffer-queue frame_available thunk (decode
     // thread): a decoded gralloc DroidMediaBuffer ready on the codec's output
@@ -246,6 +251,8 @@ private:
     qint64 m_firstPtsUs = -1;         // pts of first presented frame
     qint64 m_lastPosEmitMs = -1;      // last UI position emit (throttle to ~5 Hz)
     QString m_url;
+    int m_wantVideo = -1;             // selectTracks(): -1 = best stream
+    int m_wantAudio = -1;             // ...and -2 = audio off
     qint64 m_startMs = 0;             // seek target applied by openInput on restart
     // True only while seek() is restarting the pipeline: stop() then leaves the
     // current frame on screen instead of blanking (GUI thread only).

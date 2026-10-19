@@ -30,6 +30,31 @@ Page {
     property string videoId: ""
     property string title: ""
 
+    // The cover while watching: the video's title, its thumbnail from YouTube,
+    // and the same two buttons as a local video (play/pause, +10 s), which
+    // drive YouTube's player inside the WebView.
+    function showCover() {
+        coverState.mode = "youtube"
+        coverState.title = page.title
+        coverState.subtitle = "YouTube"
+        coverState.imagePath = ""
+        coverState.coverArt = page.videoId !== ""
+                ? "https://i.ytimg.com/vi/" + page.videoId + "/hqdefault.jpg" : ""
+        coverState.playing = false
+    }
+    Component.onDestruction: if (coverState.mode === "youtube") coverState.clear()
+    Connections {
+        target: coverState
+        onPlayPauseRequested: if (coverState.mode === "youtube") web.runJavaScript(
+            "(function(){var v=document.querySelector('video');if(!v)return;" +
+            "var p=document.getElementById('movie_player');" +
+            "if(v.paused){if(p&&p.playVideo)p.playVideo();else v.play();}" +
+            "else{if(p&&p.pauseVideo)p.pauseVideo();else v.pause();}})()")
+        onNextRequested: if (coverState.mode === "youtube") web.runJavaScript(
+            "(function(){var v=document.querySelector('video');if(!v)return;" +
+            "v.currentTime=Math.min(v.duration||(v.currentTime+10),v.currentTime+10);})()")
+    }
+
     // false while the consent-bootstrap embed loads → WebView hidden, spinner
     // shown; flips true once the real watch page is up (so the user only ever
     // sees the working player, never the embed's error-153 page).
@@ -297,6 +322,9 @@ Page {
         "document.title='RTFS:1:'+o+'|'+diag();}" +
         "['fullscreenchange','webkitfullscreenchange','mozfullscreenchange']" +
         ".forEach(function(e){document.addEventListener(e,report,true);});" +
+        // The cover's play/pause icon follows the video: media events do not
+        // bubble, but a capturing listener on the document still sees them.
+        "['play','playing','pause','ended'].forEach(function(e){document.addEventListener(e,report,true);});" +
         // The mobile watch page opens PAUSED (YouTube doesn't autoplay). We start
         // playback on the FIRST real tap via YouTube's player API playVideo() — a
         // valid user gesture, and with autoplay allowed it keeps playing (raw
@@ -663,6 +691,7 @@ Page {
     }
 
     Component.onCompleted: {
+        showCover()
         // Browser-parity prefs the bare WebView misses (sailfish-browser data/prefs.js).
         WebEngineSettings.setPreference("apz.allow_zooming", true)
         WebEngineSettings.setPreference("dom.meta-viewport.enabled", true)
@@ -786,6 +815,9 @@ Page {
                 // `sudo journalctl -b --no-pager | grep "YT diag"`. Steady-state
                 // playback stays silent.
                 var payload = t.substring(bar + 1)
+                var paused = payload.match(/(^| )pause=(\d)/)
+                if (paused && coverState.mode === "youtube")
+                    coverState.playing = paused[2] === "0"
                 var now = Date.now()
                 web.checkGeom(payload)
                 if (payload.indexOf("wd=") >= 0)

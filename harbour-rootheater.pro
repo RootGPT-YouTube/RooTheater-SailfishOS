@@ -15,7 +15,7 @@ TARGET = harbour-rootheater
 # and on the app template truncates it to major.minor when expanded.
 # Displayed in-app (AboutPage) via APP_VERSION. RPM Version stays numeric (0.9.0
 # in the spec/yaml) since RPM forbids '-'; the "-beta" label lives in APP_VERSION.
-RT_APP_VERSION = 1.5.5
+RT_APP_VERSION = 1.6.0
 # VERSION must be a clean numeric for qmake (it's reserved / gets parsed); keep it
 # separate from RT_APP_VERSION so the "-beta" suffix doesn't reach it.
 VERSION = 1.3.0
@@ -34,6 +34,7 @@ SOURCES += src/harbour-rootheater.cpp \
     src/media/MediaProbe.cpp \
     src/media/MediaEngine.cpp \
     src/media/VideoSurface.cpp \
+    src/media/SubtitleView.cpp \
     src/media/CoverImageProvider.cpp \
     src/media/TrackCoverProvider.cpp \
     src/media/TagReader.cpp \
@@ -53,6 +54,7 @@ SOURCES += src/harbour-rootheater.cpp \
 HEADERS += src/media/MediaProbe.h \
     src/media/MediaEngine.h \
     src/media/VideoSurface.h \
+    src/media/SubtitleView.h \
     src/media/CoverImageProvider.h \
     src/media/TrackCoverProvider.h \
     src/media/TagReader.h \
@@ -100,6 +102,8 @@ DISTFILES += LICENSE \
     qml/cover/CoverPage.qml \
     qml/pages/MainPage.qml \
     qml/pages/PlayerPage.qml \
+    qml/pages/TracksPage.qml \
+    qml/pages/TrackItem.qml \
     qml/pages/AboutPage.qml \
     qml/pages/GalleryPage.qml \
     qml/pages/FolderContentPage.qml \
@@ -125,7 +129,7 @@ DISTFILES += LICENSE \
     qml/pages/YtSearchPage.qml \
     qml/pages/CoverPickerPage.qml \
     qml/images/rootgpt-avatar.png \
-    qml/images/harbour-rootheater.svg \
+    qml/images/harbour-rootheater.png \
     rpm/harbour-rootheater.spec \
     rpm/harbour-rootheater.yaml \
     rpm/harbour-rootheater.changes \

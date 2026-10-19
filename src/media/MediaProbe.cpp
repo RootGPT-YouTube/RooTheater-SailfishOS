@@ -124,6 +124,28 @@ MediaProbe::Result MediaProbe::probe(const QString &url)
             continue;
         }
         const char *name = avcodec_get_name(par->codec_id);
+        if (par->codec_type == AVMEDIA_TYPE_VIDEO || par->codec_type == AVMEDIA_TYPE_AUDIO
+            || par->codec_type == AVMEDIA_TYPE_SUBTITLE) {
+            Result::Track t;
+            t.index = static_cast<int>(i);
+            t.type = par->codec_type == AVMEDIA_TYPE_VIDEO ? Result::VideoTrack
+                   : par->codec_type == AVMEDIA_TYPE_AUDIO ? Result::AudioTrack
+                                                           : Result::SubtitleTrack;
+            t.codec = QString::fromUtf8(name ? name : "");
+            if (const AVDictionaryEntry *e = av_dict_get(st->metadata, "language", nullptr, 0))
+                t.language = QString::fromUtf8(e->value);
+            if (t.language == QLatin1String("und"))
+                t.language.clear();
+            if (const AVDictionaryEntry *e = av_dict_get(st->metadata, "title", nullptr, 0))
+                t.title = QString::fromUtf8(e->value);
+            t.isDefault = st->disposition & AV_DISPOSITION_DEFAULT;
+            t.forced = st->disposition & AV_DISPOSITION_FORCED;
+            t.textual = t.type == Result::SubtitleTrack && isTextSubtitle(t.codec);
+            t.width = par->width;
+            t.height = par->height;
+            t.channels = par->ch_layout.nb_channels;
+            r.tracks.append(t);
+        }
         if (par->codec_type == AVMEDIA_TYPE_VIDEO && !r.hasVideo) {
             r.hasVideo = true;
             r.videoCodec = QString::fromUtf8(name ? name : "");
@@ -148,6 +170,14 @@ MediaProbe::Result MediaProbe::probe(const QString &url)
     avformat_close_input(&fmt);
     r.ok = true;
     return r;
+}
+
+bool MediaProbe::isTextSubtitle(const QString &codec)
+{
+    return codec == QLatin1String("subrip") || codec == QLatin1String("srt")
+        || codec == QLatin1String("ass") || codec == QLatin1String("ssa")
+        || codec == QLatin1String("mov_text") || codec == QLatin1String("webvtt")
+        || codec == QLatin1String("text");
 }
 
 QByteArray MediaProbe::coverArt(const QString &url)
