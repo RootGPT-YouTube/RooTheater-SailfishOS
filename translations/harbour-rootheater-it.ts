@@ -1212,6 +1212,26 @@ Trascina verso il basso per riprovare.</translation>
         <source>Loading…</source>
         <translation>Caricamento…</translation>
     </message>
+    <message>
+        <source>Scheduled live stream</source>
+        <translation>Diretta programmata</translation>
+    </message>
+    <message>
+        <source>Scheduled premiere</source>
+        <translation>Prima visione programmata</translation>
+    </message>
+    <message>
+        <source>It has not started yet.</source>
+        <translation>Non è ancora iniziata.</translation>
+    </message>
+    <message>
+        <source>Starts on %1 at %2</source>
+        <translation>Inizia %1 alle %2</translation>
+    </message>
+    <message>
+        <source>There is nothing to play until then. Come back when it starts.</source>
+        <translation>Fino ad allora non c&apos;è niente da riprodurre. Torna quando inizia.</translation>
+    </message>
 </context>
 <context>
     <name>YtSearch</name>

@@ -60,6 +60,13 @@ Page {
     // sees the working player, never the embed's error-153 page).
     property bool ready: false
 
+    // The video is a live stream or premiere that has not started yet: the
+    // watch page has nothing to play, so a notice takes its place. Start time
+    // in ms since the epoch, 0 when YouTube did not say.
+    property bool upcoming: false
+    property double upcomingStart: 0
+    property bool upcomingLive: true
+
     // Fullscreen orientation: 0 = not fullscreen (follow device), 1 = landscape
     // video (force landscape), 2 = portrait video (force portrait). Driven by the
     // page's own fullscreenchange listener (see watchInitJs) which reports the
@@ -182,6 +189,30 @@ Page {
     // `active` override on the WebView below.
     readonly property string watchInitJs:
         "(function(){if(window.__rtInit)return;window.__rtInit=1;" +
+        // Scheduled live stream or premiere: the channel lists it like any other
+        // video, but there is nothing to play yet. YouTube's watch page shows a
+        // countdown slate with no <video> in it, and the fullscreen starter below
+        // blew that slate up into a black screen (seen 2026-10-20 on a SaddyTech
+        // live scheduled 11 days ahead: vr=0x0, no decoder ever opened). So read
+        // the player response first and, when it says LIVE_STREAM_OFFLINE, tell
+        // QML instead — "RTLIVE:<start, epoch s, 0 = unknown>:<1 live, 0 premiere>"
+        // — and leave the page alone. The player's own copy wins over the one
+        // embedded in the HTML, which can be stale; either must name THIS video.
+        "function rtUpcoming(){try{var id=new URLSearchParams(location.search).get('v');" +
+        "var p=document.getElementById('movie_player');var r=null;" +
+        "try{if(p&&p.getPlayerResponse)r=p.getPlayerResponse();}catch(e){}" +
+        "if(!r||!r.playabilityStatus)r=window.ytInitialPlayerResponse;" +
+        "var ps=r&&r.playabilityStatus;if(!ps)return null;var vd=r.videoDetails||{};" +
+        "if(id&&vd.videoId&&vd.videoId!==id)return null;" +
+        "if(ps.status!=='LIVE_STREAM_OFFLINE'&&!vd.isUpcoming)return null;var s=0;" +
+        "try{s=+ps.liveStreamability.liveStreamabilityRenderer.offlineSlate" +
+        ".liveStreamOfflineSlateRenderer.scheduledStartTime||0;}catch(e){}" +
+        "if(!s){try{s=Math.round(Date.parse(r.microformat.playerMicroformatRenderer" +
+        ".liveBroadcastDetails.startTimestamp)/1000)||0;}catch(e){}}" +
+        "return s+':'+(vd.isLiveContent?1:0);}catch(e){return null;}}" +
+        "function rtLive(u){document.title='RTLIVE:'+u;" +
+        "try{if(document.fullscreenElement)document.exitFullscreen();}catch(e){}}" +
+        "var up=rtUpcoming();if(up!==null){rtLive(up);return;}" +
         // Diagnostic payload, piggybacked on the document.title channel below.
         // (runJavaScript's return value never reaches its callback on this
         // WebView, so the title is the only way back to QML.) It is what makes
@@ -583,6 +614,9 @@ Page {
         "var n=0;var k=setInterval(function(){n++;" +
         "var fe=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;" +
         "if(fe){clearInterval(k);return;}" +          // fullscreen in → done
+        // The player response can land after the first check above did: look again
+        // before every fullscreen attempt, so a slate is never blown up.
+        "var u=rtUpcoming();if(u!==null){clearInterval(k);rtLive(u);return;}" +
         "var v=document.querySelector('video');hookV(v);" +
         "fsCss();goFs();" +
         "if(n>25){clearInterval(k);}" +
@@ -665,7 +699,8 @@ Page {
     // blanking for as long as the watch page is up, this page is on top and the
     // app is focused (backgrounding or navigating away re-enables normal blanking).
     DisplayBlanking {
-        preventBlanking: page.ready && page.status === PageStatus.Active
+        preventBlanking: page.ready && !page.upcoming
+                         && page.status === PageStatus.Active
                          && Qt.application.active
     }
 
@@ -749,11 +784,12 @@ Page {
         // writable QuickMozView property and that binding is the only one touching
         // it, so overriding it here is enough. Tied to the page rather than
         // hardcoded true, so leaving the player still suspends Gecko.
-        active: page.status !== PageStatus.Inactive
+        // A scheduled stream has nothing to play: suspend the page under the notice.
+        active: page.status !== PageStatus.Inactive && !page.upcoming
         // Keep it rendering (so it loads) but invisible until the watch page is up
         // (so the embed's error-153 page is never seen). The watch page itself is
         // fine to show — it auto-goes fullscreen, and the plain page when not.
-        opacity: page.ready ? 1.0 : 0.0
+        opacity: page.ready && !page.upcoming ? 1.0 : 0.0
         Behavior on opacity { FadeAnimation {} }
 
         // Throttle the video to the cheapest level whenever the app is not in
@@ -786,6 +822,14 @@ Page {
         // Fullscreen state/orientation pushed from the page via document.title.
         onTitleChanged: {
             var t = title
+            // Scheduled live stream / premiere (see rtUpcoming in watchInitJs).
+            if (t.indexOf("RTLIVE:") === 0) {
+                var f = t.substring(7).split(":")
+                page.upcomingStart = (parseInt(f[0], 10) || 0) * 1000
+                page.upcomingLive = f[1] !== "0"
+                page.upcoming = true
+                return
+            }
             // Flight-recorder flush: a single title change carrying the ~60s that
             // led up to an underrun or a watchdog recovery, oldest sample first.
             // This is what makes a stutter that happens once in hours or days
@@ -904,6 +948,60 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: qsTr("Loading…")
                 color: Theme.highlightColor
+            }
+        }
+    }
+
+    // Scheduled live stream / premiere: say so, and when, instead of the black
+    // screen the empty watch page would give.
+    Rectangle {
+        anchors.fill: parent
+        visible: page.upcoming
+        color: Theme.overlayBackgroundColor
+
+        Column {
+            anchors.centerIn: parent
+            width: parent.width - 2 * Theme.horizontalPageMargin
+            spacing: Theme.paddingLarge
+
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraLarge
+                color: Theme.highlightColor
+                text: page.upcomingLive ? qsTr("Scheduled live stream")
+                                        : qsTr("Scheduled premiere")
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                color: Theme.secondaryHighlightColor
+                text: page.title
+                visible: text !== ""
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeLarge
+                color: Theme.highlightColor
+                text: {
+                    if (page.upcomingStart <= 0)
+                        return qsTr("It has not started yet.")
+                    var d = new Date(page.upcomingStart)
+                    return qsTr("Starts on %1 at %2")
+                            .arg(Qt.formatDate(d, Qt.DefaultLocaleLongDate))
+                            .arg(Qt.formatTime(d, "hh:mm"))
+                }
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                color: Theme.secondaryColor
+                text: qsTr("There is nothing to play until then. Come back when it starts.")
             }
         }
     }

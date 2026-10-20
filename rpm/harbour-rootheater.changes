@@ -1,3 +1,11 @@
+* Tue Oct 20 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.7.1-1
+- YouTube: a live stream or premiere that has not started yet now shows a
+  notice with its start date and time ("Scheduled live stream - Starts on ...")
+  instead of a black screen. Channels list these like any other video, but
+  there is nothing to play yet: the watch page only has a countdown slate,
+  which the automatic fullscreen blew up into black. The page is suspended
+  under the notice and the display may blank as usual.
+
 * Mon Oct 19 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.7.0-1
 - Hardware video no longer freezes after a series of seeks or track changes.
   Every restart of the hardware decoder (each seek, each track change) leaked

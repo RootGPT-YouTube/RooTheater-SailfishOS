@@ -1212,6 +1212,26 @@ Pull down to retry.</translation>
         <source>Loading…</source>
         <translation>Loading…</translation>
     </message>
+    <message>
+        <source>Scheduled live stream</source>
+        <translation>Scheduled live stream</translation>
+    </message>
+    <message>
+        <source>Scheduled premiere</source>
+        <translation>Scheduled premiere</translation>
+    </message>
+    <message>
+        <source>It has not started yet.</source>
+        <translation>It has not started yet.</translation>
+    </message>
+    <message>
+        <source>Starts on %1 at %2</source>
+        <translation>Starts on %1 at %2</translation>
+    </message>
+    <message>
+        <source>There is nothing to play until then. Come back when it starts.</source>
+        <translation>There is nothing to play until then. Come back when it starts.</translation>
+    </message>
 </context>
 <context>
     <name>YtSearch</name>
