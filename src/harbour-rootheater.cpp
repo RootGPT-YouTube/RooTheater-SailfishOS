@@ -45,6 +45,7 @@
 #include "media/ShareHandler.h"
 #include "media/CoverState.h"
 #include "media/YtSubscriptions.h"
+#include "media/RooTitaniumBridge.h"
 #include "media/YtFeed.h"
 #include "media/YtSearch.h"
 #ifdef HAVE_LIBVLC
@@ -145,6 +146,9 @@ int main(int argc, char *argv[])
     // Shared YouTube subscriptions model (Home grid + YouTube page stay in sync).
     YtSubscriptions *ytSubs = new YtSubscriptions(app.data());
     view->rootContext()->setContextProperty("ytSubs", ytSubs);
+
+    // Hands YouTube videos to RooTitanium when the viewer asked for it (Options).
+    view->rootContext()->setContextProperty("rooTitanium", new RooTitaniumBridge(app.data()));
 
     // In-memory provider for embedded audio cover art (engine owns it). MediaEngine
     // reaches it via g_coverProvider; QML shows "image://rtcover/<token>".

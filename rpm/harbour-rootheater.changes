@@ -1,3 +1,19 @@
+* Thu Nov 05 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.8.0-1
+- New option in Options > YouTube: "Use RooTitanium for YouTube". Videos open in
+  RooTitanium and go fullscreen by themselves. Needs RooTitanium 2.9.5 or later
+  for the automatic fullscreen; if RooTitanium is not installed, tapping the
+  switch leaves it off and says to install it. Updating asks once for the new
+  "RooTitanium" permission.
+- YouTube rotates to landscape again on Sailfish OS 5.2. Its browser engine no
+  longer reports page title changes, and those carried every message from the
+  player to the app. The same fault had also disabled the protection of the
+  progress bar from the back swipe, the cover's play/pause icon and the notice
+  for scheduled live streams.
+- Landscape videos rotate as soon as the page opens, without waiting for the
+  first tap.
+- The settings gear works again in fullscreen. YouTube now opens the panel there
+  by itself, and our old workaround was what stopped it.
+
 * Tue Oct 20 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.7.1-1
 - YouTube: a live stream or premiere that has not started yet now shows a
   notice with its start date and time ("Scheduled live stream - Starts on ...")

@@ -9,7 +9,7 @@ Name:       harbour-rootheater
 # << macros
 
 Summary:    RooTheater is a multimedia player for Sailfish OS
-Version:    1.7.1
+Version:    1.8.0
 Release:    1
 Group:      Qt/Qt
 License:    GPL-3.0
@@ -71,5 +71,6 @@ desktop-file-install --delete-original       \
 %{_datadir}/%{name}
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
+%config /etc/sailjail/permissions/RooTitaniumPlayer.permission
 # >> files
 # << files

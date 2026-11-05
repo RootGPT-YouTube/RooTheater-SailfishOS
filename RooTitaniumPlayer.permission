@@ -1,0 +1,12 @@
+# -*- mode: sh -*-
+
+# x-sailjail-translation-catalog =
+# x-sailjail-translation-key-description =
+# x-sailjail-description = RooTitanium
+# x-sailjail-translation-key-long-description =
+# x-sailjail-long-description = Play YouTube videos in RooTitanium
+
+# Options → YouTube → "Use RooTitanium for YouTube": RooTheater asks the session bus
+# whether RooTitanium is installed and hands it the video with
+# org.freedesktop.Application.openUrl. Without this the sandbox hides the name.
+dbus-user.talk com.github.RootGPT_YouTube.rootitanium

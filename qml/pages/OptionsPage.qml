@@ -103,6 +103,69 @@ Page {
                     defaultValue: true
                 }
             }
+
+            // YouTube in RooTitanium instead of the player built on Sailfish's browser
+            // engine. With the browser missing the tap must not move the switch: it
+            // says what to install instead.
+            TextSwitch {
+                id: rooTitaniumSwitch
+                width: parent.width
+                automaticCheck: false
+                checked: rooTitanium.installed && rooTitanium.enabled
+                text: qsTr("Use RooTitanium for YouTube")
+                description: rooTitanium.installed
+                             ? qsTr("Play YouTube videos in RooTitanium instead of Sailfish Browser. They open in fullscreen by themselves.")
+                             : qsTr("Play YouTube videos in RooTitanium. RooTitanium is not installed.")
+                onClicked: {
+                    rooTitanium.refresh()
+                    if (rooTitanium.installed) {
+                        ytUseRooTitanium.value = !checked
+                    } else {
+                        rooTitaniumNotice.opacity = 1
+                        rooTitaniumNoticeTimer.restart()
+                    }
+                }
+
+                ConfigurationValue {
+                    id: ytUseRooTitanium
+                    key: "/apps/harbour-rootheater/yt/useRooTitanium"
+                    defaultValue: false
+                }
+            }
+        }
+    }
+
+    // The bus is asked again on every visit: RooTitanium may have come or gone meanwhile.
+    onStatusChanged: if (status === PageStatus.Activating) rooTitanium.refresh()
+
+    Rectangle {
+        id: rooTitaniumNotice
+        anchors {
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+            margins: Theme.horizontalPageMargin
+        }
+        height: rooTitaniumNoticeLabel.height + 2 * Theme.paddingLarge
+        radius: Theme.paddingSmall
+        color: Theme.rgba(Theme.highlightDimmerColor, 0.95)
+        opacity: 0
+        visible: opacity > 0
+        Behavior on opacity { FadeAnimation {} }
+
+        Label {
+            id: rooTitaniumNoticeLabel
+            anchors.centerIn: parent
+            width: parent.width - 2 * Theme.paddingLarge
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+            color: Theme.highlightColor
+            text: qsTr("Install RooTitanium to use this option.")
+        }
+        Timer {
+            id: rooTitaniumNoticeTimer
+            interval: 4000
+            onTriggered: rooTitaniumNotice.opacity = 0
         }
     }
 }

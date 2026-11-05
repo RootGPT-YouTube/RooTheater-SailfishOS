@@ -141,7 +141,7 @@ Page {
                 if (model.kind === "channel")
                     pageStack.push(Qt.resolvedUrl("YtChannelPage.qml"),
                                    { channelId: model.channelId, channelName: model.title })
-                else
+                else if (!rooTitanium.playYouTube(model.videoId, model.title))
                     pageStack.push(Qt.resolvedUrl("YtPlayerPage.qml"),
                                    { videoId: model.videoId, title: model.title })
             }

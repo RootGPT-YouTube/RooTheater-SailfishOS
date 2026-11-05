@@ -189,6 +189,18 @@ Page {
     // `active` override on the WebView below.
     readonly property string watchInitJs:
         "(function(){if(window.__rtInit)return;window.__rtInit=1;" +
+        // The way back to QML, in two lanes because no single one works everywhere.
+        // Gecko 91 (SFOS 5.1): runJavaScript's callback always receives undefined, so
+        // the title is the only channel. Gecko 115 (SFOS 5.2): the callback works and
+        // the WebView's `title` property stops following document.title after the page
+        // has loaded (measured on the POCO on 2026-11-05: document.title read back
+        // RTFS:1:unk while web.title stayed "YouTube" and onTitleChanged never fired),
+        // which silently cut every report below: no landscape, back swipe stealing the
+        // scrub, cover icon stuck, the notice for scheduled streams gone. So each
+        // message takes both lanes and QML (web.drainPage) drops the duplicate.
+        "window.__rtOut=[];window.__rtDrain=function(){var q=window.__rtOut;window.__rtOut=[];return q.join('\\n');};" +
+        "function rtSend(m){try{document.title=m;}catch(e){}" +
+        "window.__rtOut.push(m);if(window.__rtOut.length>16)window.__rtOut.shift();}" +
         // Scheduled live stream or premiere: the channel lists it like any other
         // video, but there is nothing to play yet. YouTube's watch page shows a
         // countdown slate with no <video> in it, and the fullscreen starter below
@@ -210,7 +222,7 @@ Page {
         "if(!s){try{s=Math.round(Date.parse(r.microformat.playerMicroformatRenderer" +
         ".liveBroadcastDetails.startTimestamp)/1000)||0;}catch(e){}}" +
         "return s+':'+(vd.isLiveContent?1:0);}catch(e){return null;}}" +
-        "function rtLive(u){document.title='RTLIVE:'+u;" +
+        "function rtLive(u){rtSend('RTLIVE:'+u);" +
         "try{if(document.fullscreenElement)document.exitFullscreen();}catch(e){}}" +
         "var up=rtUpcoming();if(up!==null){rtLive(up);return;}" +
         // Diagnostic payload, piggybacked on the document.title channel below.
@@ -311,7 +323,7 @@ Page {
         // One dump per 30s at most, window emptied after a flush so two dumps never
         // repeat samples. The event line itself is logged live regardless.
         "function rbDump(tag){var now=Date.now();if(DUMP.at&&now-DUMP.at<30000)return;" +
-        "DUMP.at=now;try{document.title='RTDUMP:'+tag+'|'+RB.join(';');}catch(e){}RB=[];}" +
+        "DUMP.at=now;rtSend('RTDUMP:'+tag+'|'+RB.join(';'));RB=[];}" +
         // Underrun probe — OBSERVATION ONLY. `waiting`/`stalled` fire exactly when
         // the picture runs out of data, the moment the field report describes, and
         // the watchdog below is deliberately blind to it (it stands down on
@@ -346,11 +358,26 @@ Page {
         // with the size it is laid out for (see the geometry tokens above). With
         // `unk` the page simply keeps whatever orientation it has, which for a
         // vertical video is still never sideways — the device decides.
+        //
+        // The player response already lists the size of every stream, and the watch
+        // page opens PAUSED with videoWidth=0 until the first tap: reading it there
+        // rotates straight away instead of leaving a landscape video upright until
+        // the viewer touches it. Same proof, a little earlier; once the element itself
+        // knows its size (an ad can differ from the video) the element wins.
+        "function rtShape(){try{var id=new URLSearchParams(location.search).get('v');" +
+        "var p=document.getElementById('movie_player');var r=null;" +
+        "try{if(p&&p.getPlayerResponse)r=p.getPlayerResponse();}catch(e){}" +
+        "if(!r||!r.streamingData)r=window.ytInitialPlayerResponse;" +
+        "if(!r||!r.streamingData||(r.videoDetails&&r.videoDetails.videoId!==id))return null;" +
+        "var f=(r.streamingData.adaptiveFormats||[]).concat(r.streamingData.formats||[]);" +
+        "for(var i=0;i<f.length;i++)if(f[i].width&&f[i].height)return f[i].width>f[i].height?'land':'port';" +
+        "}catch(e){}return null;}" +
         "function report(){var fe=document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement;" +
-        "if(!fe){document.title='RTFS:0|'+diag();return;}" +
+        "if(!fe){rtSend('RTFS:0|'+diag());return;}" +
         "var v=document.querySelector('video');var o='unk';" +
         "if(v&&v.videoWidth&&v.videoHeight)o=(v.videoWidth>v.videoHeight)?'land':'port';" +
-        "document.title='RTFS:1:'+o+'|'+diag();}" +
+        "else o=rtShape()||'unk';" +
+        "rtSend('RTFS:1:'+o+'|'+diag());}" +
         "['fullscreenchange','webkitfullscreenchange','mozfullscreenchange']" +
         ".forEach(function(e){document.addEventListener(e,report,true);});" +
         // The cover's play/pause icon follows the video: media events do not
@@ -621,40 +648,13 @@ Page {
         "fsCss();goFs();" +
         "if(n>25){clearInterval(k);}" +
         "},400);" +
-        // The top-bar buttons in fullscreen (settings gear, captions, autoplay).
-        // They received the tap and YouTube simply did nothing: measured on the
-        // Gecko bench, the same click that opens the settings sheet inline is a
-        // no-op once document.fullscreenElement is set — with YouTube's OWN
-        // fullscreen button too, so it is YouTube's choice, not our starter. Two
-        // steps undo it, both scoped to a click on the top bar or inside the sheet:
-        //  • for 400ms document.fullscreenElement reads null, through an own
-        //    property shadowing the prototype getter — the real fullscreen stays on,
-        //    YouTube just takes its inline path. ONLY that one property: masking the
-        //    prefixed and boolean twins as well (document.fullscreen & co.) made
-        //    YouTube conclude it had left fullscreen — its button turned into "enter
-        //    fullscreen" for good and nothing could exit any more (bench, one
-        //    property at a time: this one alone opens the sheet and harms nothing);
-        //  • the sheet it opens lives in bottom-sheet-container under ytm-app,
-        //    outside the fullscreen element, where nothing is painted — so that
-        //    container is moved into the fullscreen element, and back to where it
-        //    came from when fullscreen ends (inline, it must not sit in the player).
-        // Our own reporting keeps working: a masked report says "RTFS:0", which
-        // the 1.5s fsDrop debounce on the QML side outlasts.
-        "var fsP=Object.getOwnPropertyDescriptor(Document.prototype,'fullscreenElement');" +
-        "function realFe(){try{return fsP.get.call(document);}catch(e){return null;}}" +
-        "var fmT=null,shHome=null;" +
-        "function fsMask(){if(!fsP)return;" +
-        "Object.defineProperty(document,'fullscreenElement',{configurable:true,get:function(){return null;}});" +
-        "clearTimeout(fmT);fmT=setTimeout(function(){try{delete document.fullscreenElement;}catch(e){}},400);}" +
-        "document.addEventListener('click',function(e){var fe=realFe();var t=e.target;" +
-        "if(!fe||!t||!t.closest)return;" +
-        "if(!t.closest('.player-controls-top')&&!t.closest('bottom-sheet-container'))return;" +
-        "var sc=document.querySelector('bottom-sheet-container');" +
-        "if(sc&&!fe.contains(sc)){shHome=sc.parentNode;fe.appendChild(sc);}" +
-        "fsMask();},true);" +
-        "['fullscreenchange','mozfullscreenchange'].forEach(function(ev){document.addEventListener(ev,function(){" +
-        "if(realFe()||!shHome)return;var sc=document.querySelector('bottom-sheet-container');" +
-        "if(sc&&sc.parentNode!==shHome)shHome.appendChild(sc);shHome=null;},true);});" +
+        // No help for the top-bar buttons in fullscreen (settings gear, captions): since
+        // autumn 2026 YouTube keeps a bottom-sheet-container of its own inside the
+        // fullscreen element (#full-screen-content-id) and opens the sheet there by
+        // itself. The workaround that used to live here (1.5.5: hide
+        // document.fullscreenElement for a moment and carry the sheet in) made it open
+        // the inline path instead, outside the fullscreen, where nothing is painted:
+        // our cure had become the fault. Measured on the bench on 2026-11-05, both ways.
         // Tap-to-seek on the progress bar. YouTube's mobile bar only seeks on a
         // DRAG of a finger: a plain tap on it is ignored (measured on the Gecko
         // bench — the mouse click seeks, the touch tap delivers touchstart,
@@ -820,8 +820,24 @@ Page {
             }
         }
         // Fullscreen state/orientation pushed from the page via document.title.
-        onTitleChanged: {
-            var t = title
+        onTitleChanged: handlePageMessage(title)
+        // Gecko 115 lane (see rtSend in watchInitJs). On Gecko 91 the callback gets
+        // undefined and this simply finds nothing.
+        function drainPage() {
+            runJavaScript("return window.__rtDrain?window.__rtDrain():''", function(r) {
+                if (typeof r !== "string" || r === "")
+                    return
+                var msgs = r.split("\n")
+                for (var i = 0; i < msgs.length; ++i)
+                    handlePageMessage(msgs[i])
+            })
+        }
+        property string lastPageMessage: ""
+        function handlePageMessage(t) {
+            // The same message can arrive by both lanes.
+            if (t === lastPageMessage)
+                return
+            lastPageMessage = t
             // Scheduled live stream / premiere (see rtUpcoming in watchInitJs).
             if (t.indexOf("RTLIVE:") === 0) {
                 var f = t.substring(7).split(":")
@@ -923,6 +939,14 @@ Page {
             }
         }
         Timer { id: gotoWatch; interval: 400; onTriggered: web.url = page.watchUrl }
+        // The page speaks every 600ms while fullscreen. Slower with nobody looking:
+        // then it only feeds the cover's play/pause icon.
+        Timer {
+            running: page.ready && web.active
+            interval: Qt.application.active ? 500 : 2000
+            repeat: true
+            onTriggered: web.drainPage()
+        }
 
         // No PullDownMenu here: a WebView is not a Flickable, so a pulley on it has
         // no flickable to hang from — it never opened, and every visit logged a

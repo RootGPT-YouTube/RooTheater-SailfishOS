@@ -15,7 +15,7 @@ TARGET = harbour-rootheater
 # and on the app template truncates it to major.minor when expanded.
 # Displayed in-app (AboutPage) via APP_VERSION. RPM Version stays numeric (0.9.0
 # in the spec/yaml) since RPM forbids '-'; the "-beta" label lives in APP_VERSION.
-RT_APP_VERSION = 1.7.1
+RT_APP_VERSION = 1.8.0
 # VERSION must be a clean numeric for qmake (it's reserved / gets parsed); keep it
 # separate from RT_APP_VERSION so the "-beta" suffix doesn't reach it.
 VERSION = 1.3.0
@@ -46,6 +46,7 @@ SOURCES += src/harbour-rootheater.cpp \
     src/media/OpenHandler.cpp \
     src/media/ShareHandler.cpp \
     src/media/YtSubscriptions.cpp \
+    src/media/RooTitaniumBridge.cpp \
     src/media/YtFeed.cpp \
     src/media/YtFeedCache.cpp \
     src/media/YtChannelFetch.cpp \
@@ -67,6 +68,7 @@ HEADERS += src/media/MediaProbe.h \
     src/media/ShareHandler.h \
     src/media/CoverState.h \
     src/media/YtSubscriptions.h \
+    src/media/RooTitaniumBridge.h \
     src/media/YtFeed.h \
     src/media/YtFeedCache.h \
     src/media/YtChannelFetch.h \
@@ -78,6 +80,11 @@ HEADERS += src/media/MediaProbe.h \
 licenses.files = $$PWD/LICENSE $$PWD/NOTICE.md
 licenses.path = /usr/share/$${TARGET}/licenses
 INSTALLS += licenses
+
+# Lets the sandbox see and call RooTitanium (Options → YouTube).
+rootitaniumpermission.files = $$PWD/RooTitaniumPlayer.permission
+rootitaniumpermission.path = /etc/sailjail/permissions
+INSTALLS += rootitaniumpermission
 
 # D-Bus activation is handled by Sailjail: the .desktop [X-Sailjail] ExecDBus key
 # makes it auto-generate the session service for our bus name

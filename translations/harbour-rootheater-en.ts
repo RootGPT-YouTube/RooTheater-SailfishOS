@@ -733,6 +733,22 @@
 <context>
     <name>OptionsPage</name>
     <message>
+        <source>Use RooTitanium for YouTube</source>
+        <translation>Use RooTitanium for YouTube</translation>
+    </message>
+    <message>
+        <source>Play YouTube videos in RooTitanium instead of Sailfish Browser. They open in fullscreen by themselves.</source>
+        <translation>Play YouTube videos in RooTitanium instead of Sailfish Browser. They open in fullscreen by themselves.</translation>
+    </message>
+    <message>
+        <source>Play YouTube videos in RooTitanium. RooTitanium is not installed.</source>
+        <translation>Play YouTube videos in RooTitanium. RooTitanium is not installed.</translation>
+    </message>
+    <message>
+        <source>Install RooTitanium to use this option.</source>
+        <translation>Install RooTitanium to use this option.</translation>
+    </message>
+    <message>
         <source>Options</source>
         <translation>Options</translation>
     </message>

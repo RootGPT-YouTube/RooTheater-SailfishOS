@@ -106,8 +106,11 @@ Page {
             width: parent.width
             contentHeight: thumb.height + 2 * Theme.paddingMedium
 
-            onClicked: pageStack.push(Qt.resolvedUrl("YtPlayerPage.qml"),
-                                      { videoId: model.videoId, title: model.title })
+            onClicked: {
+                if (!rooTitanium.playYouTube(model.videoId, model.title))
+                    pageStack.push(Qt.resolvedUrl("YtPlayerPage.qml"),
+                                   { videoId: model.videoId, title: model.title })
+            }
 
             Image {
                 id: thumb

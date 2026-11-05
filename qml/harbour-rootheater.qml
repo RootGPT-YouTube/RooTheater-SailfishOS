@@ -1,5 +1,6 @@
 import QtQuick 2.0
 import Sailfish.Silica 1.0
+import Nemo.Configuration 1.0
 import "pages"
 import "cover"
 
@@ -9,6 +10,25 @@ ApplicationWindow {
     initialPage: Component { MainPage {} }
     cover: Component { CoverPage {} }
     allowedOrientations: Orientation.All
+
+    // Options → YouTube → "Use RooTitanium for YouTube". Off unless switched on; dconf
+    // can hand the value back as a string here, as PermissionSwitch guards for too.
+    ConfigurationValue {
+        id: ytUseRooTitanium
+        key: "/apps/harbour-rootheater/yt/useRooTitanium"
+        defaultValue: false
+    }
+    Binding {
+        target: rooTitanium
+        property: "enabled"
+        value: ytUseRooTitanium.value === true || ytUseRooTitanium.value === "true"
+    }
+    // The browser could not be reached after all: the video still gets played.
+    Connections {
+        target: rooTitanium
+        onOpenFailed: pageStack.push(Qt.resolvedUrl("pages/YtPlayerPage.qml"),
+                                     { videoId: videoId, title: title })
+    }
 
     // Open a file handed to us by the system (MIME handler) or the command line:
     // images go to the viewer, everything else to the player.
