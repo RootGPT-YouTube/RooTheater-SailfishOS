@@ -1,3 +1,19 @@
+* Thu Nov 12 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.9.0-1
+- The bundled libVLC now carries the same codecs, demuxers and access modules
+  as desktop VLC, instead of a reduced set. AV1 videos play (dav1d, software
+  decoding on all cores), and the full codec range is native: VP8/VP9 (libvpx),
+  Vorbis, Opus, FLAC, Theora, Speex, AC-3, DTS, AAC (faad2), MPEG-1/2, MP3,
+  Musepack, tracker music, chiptunes, plus native MKV/WebM and Ogg demuxers,
+  styled ASS/SSA subtitles (libass), teletext, DVB and ARIB captions,
+  unprotected DVD/Blu-ray folders and images, RTSP, SRT, SMB, NFS, SFTP, UPnP
+  and archive access, and the x264/x265 encoders for future recording.
+- Left out on purpose: fdk-aac (licence incompatible with the GPL) and the
+  libraries that break disc copy protection (libdvdcss, AACS, BD+), which
+  cannot be distributed in the EU.
+- The bundled libVLC is now GPL-2.0-or-later as a whole, compatible with
+  RooTheater's GPL-3.0-or-later; every library and its licence is listed in
+  licenses/vlc/CONTRIB.md.
+
 * Thu Nov 05 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.8.0-1
 - New option in Options > YouTube: "Use RooTitanium for YouTube". Videos open in
   RooTitanium and go fullscreen by themselves. Needs RooTitanium 2.9.5 or later

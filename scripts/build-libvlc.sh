@@ -17,147 +17,219 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# PROFILO COMPLETO (dalla 1.9.0): stessi codec/demuxer/accessi di VLC desktop.
+# Prima (fino alla 1.8.0) la build era "lean" (contrib = ffmpeg+gnutls+dvbpsi):
+# niente AV1 (dav1d), niente mkv/ogg nativi, niente libass. Ora i contrib sono
+# quasi tutti, e restano fuori SOLO:
+#  - interfacce grafiche e uscite video di VLC (il video va gia' a RooTheater);
+#  - fdk-aac (licenza Fraunhofer incompatibile con la GPL; l'AAC lo fa ffmpeg);
+#  - libdvdcss / aacs / bdplus / aribb25 (aggirano protezioni: non distribuibili
+#    in UE/IT). dvdread/bluray restano, per i dischi non protetti; dvdread carica
+#    da solo libdvdcss a runtime se l'utente l'ha installata per conto suo.
+# ⛔ zvbi NO: pdc.c e packet-830.c (linkati nel plugin) sono "GPL version 2"
+#    SENZA "or later" ⇒ incompatibili con la GPL-3.0 dell'app. Il teletext lo fa
+#    telx, il decoder interno di VLC (GPLv2+). Controllo fatto su tutti i contrib
+#    (file GPL senza "later"): restano solo x265/md5 (GPL senza versione = va
+#    bene qualsiasi) e faad2/aacDECdrop (frontend Windows, non linkato).
+# Licenze: l'insieme e' GPLv2+ (x264/x265/faad2/a52/dca/libmpeg2...), compatibile
+# con la GPL-3.0 di RooTheater. Elenco e testi in licenses/ + NOTICE.md.
+# Cartelle separate (-full) per non toccare la build lean usata fino alla 1.8.0.
+
 ARCH="${1:-aarch64}"
-STEP="${2:-all}"          # all | contrib | vlc  (per riprendere a fasi)
+STEP="${2:-all}"          # all | contrib | vlc | vendor  (per riprendere a fasi)
 case "$ARCH" in
-    aarch64) SFOS_TARGET="SailfishOS-5.0.0.62-aarch64"; HOST="aarch64-meego-linux-gnu" ;;
-    armv7hl) SFOS_TARGET="SailfishOS-5.0.0.62-armv7hl"; HOST="armv7hl-meego-linux-gnueabi" ;;
-    i486)    SFOS_TARGET="SailfishOS-5.0.0.62-i486";    HOST="i486-meego-linux-gnu" ;;
+    aarch64) HOST="aarch64-meego-linux-gnu" ;;
+    armv7hl) HOST="armv7hl-meego-linux-gnueabi" ;;
+    i486)    HOST="i486-meego-linux-gnu" ;;
     *) echo "arch non supportata: $ARCH"; exit 1 ;;
 esac
+# Stesso target dell'app (il telefono gira 5.1+). ⛔ MAI `sfdk config target=`:
+# non ha effetto fra un comando e l'altro; solo `-c target=` su ogni chiamata.
+SFOS_TARGET="SailfishOS-5.1.0.11-$ARCH"
 
 SFDK="${SFDK:-$HOME/SailfishOS/bin/sfdk}"
 PROJ="$(cd "$(dirname "$0")/.." && pwd)"
 VER="3.0.21"
 B="$PROJ/_libvlc_build"
 SRC="$B/vlc-$VER"
-CONTRIB="$SRC/contrib/sfos-$ARCH"
-PREFIX="$B/prefix-$ARCH"          # contrib install prefix (sysroot-style)
-STAGE="$B/stage-$ARCH"            # libvlc install stage
-
-mkdir -p "$B"
+SUF="-full"
+CONTRIB="$SRC/contrib/sfos-$ARCH$SUF"
+PREFIX="$B/prefix-$ARCH$SUF"      # contrib install prefix (sysroot-style)
+STAGE="$B/stage-$ARCH$SUF"        # libvlc install stage
+BUILD="$B/build-$ARCH$SUF"
+TOOLS="$B/tools/bin"              # meson (non c'e' nel build-shell): vedi sotto
+LOG="$B/logs-$ARCH$SUF"
+mkdir -p "$B" "$LOG"
 cd "$B"
 [ -f vlc-$VER.tar.xz ] || curl -fsSL -o vlc-$VER.tar.xz \
     "https://download.videolan.org/pub/videolan/vlc/$VER/vlc-$VER.tar.xz"
 [ -d "$SRC" ] || tar xf vlc-$VER.tar.xz
 
-(cd "$PROJ" && "$SFDK" config --global target="$SFOS_TARGET")
+# meson: dav1d (e altri) si configurano con meson, assente nel build-shell. E'
+# puro Python: tarball ufficiale + lanciatore in tools/bin (il container dell'SDK
+# vede _libvlc_build perche' sta sotto la home dell'utente).
+if [ ! -x "$TOOLS/meson" ]; then
+    mkdir -p "$TOOLS"; ( cd "$B/tools"
+    curl -fsSL -o meson-1.5.2.tar.gz https://github.com/mesonbuild/meson/releases/download/1.5.2/meson-1.5.2.tar.gz
+    tar xf meson-1.5.2.tar.gz )
+    printf '#!/bin/sh\nexec python3 %s/meson-1.5.2/meson.py "$@"\n' "$B/tools" > "$TOOLS/meson"
+    chmod +x "$TOOLS/meson"
+fi
+
+sfdk_shell() { (cd "$PROJ" && "$SFDK" -c target="$SFOS_TARGET" build-shell bash -c "$1"); }
 
 # ── 1) contrib (librerie terze) da sorgente ──────────────────────────────────
-# TRIM "lean": NON costruiamo l'intero set di default dei contrib (decine di
-# librerie, molte inutili su SFOS — alsa/salsa, encoder x264/x262, roba Windows
-# — e alcune richiedono git/nasm assenti nel build-shell). Costruiamo solo i
-# pacchetti che danno la copertura codec di libvlc, per NOME, lasciando che make
-# trascini le loro dipendenze (es. .ffmpeg → zlib, gsm). ffmpeg 4.4.4 arriva dal
-# release tarball https (il git è solo nel ramo USE_LIBAV inattivo).
-# Esportiamo i tool cross espliciti: nel build-shell `gcc` è il cross, ma i
-# Makefile dei contrib costruiscono i nomi come $(HOST)-gcc, che NON esistono.
-# .gnutls: TLS client per libvlc. SENZA, libvlc non ha alcun modulo TLS ("TLS
-# client plugin not available") e NON apre URL https:// — gli stream HLS/DASH reali
-# danno schermo nero. (mbedtls, piu' leggero, NON e' nei contrib di VLC 3.0.21;
-# l'unico TLS disponibile e' gnutls.) make trascina le sue deps nettle/gmp/libtasn1;
-# i contrib sono statici, quindi gnutls+deps si linkano dentro libgnutls_plugin.so
-# e il vendor step lo raccoglie gia' con cp lib*_plugin.so (nessuna .so extra).
-# .dvbpsi: serve al demuxer MPEG-TS di libvlc (libts_plugin). SENZA, gli stream
-# HLS in TS (il formato IPTV piu' diffuso) falliscono con "Failed to create
-# demuxer TS". (L'HLS in fMP4 usa invece libmp4, gia' presente.)
-CONTRIB_PKGS="${CONTRIB_PKGS:-.ffmpeg .gnutls .dvbpsi}"
+# Prerequisito nel target (una volta per arch): gettext-devel, per `autopoint`
+# (libgpg-error rigenera il configure). Senza, gcrypt fallisce:
+#   sfdk engine exec sb2 -t SailfishOS-5.1.0.11-<arch>.default -m sdk-install -R \
+#        zypper -n in gettext-devel
+# Il target i486 e' piu' spoglio: servono anche git (gcrypt fa un commit
+# fittizio), ninja (meson), gperf, bison, flex e nasm (asm x86 di dav1d/x264/vpx):
+#        zypper -n in gettext-devel git ninja gperf bison flex nasm
+# Un pacchetto alla volta, per NOME (make trascina le dipendenze): un guasto non
+# ferma gli altri, finisce in $LOG/contrib-<pkg>.log e nell'elenco FALLITI.
+CONTRIB_PKGS="${CONTRIB_PKGS:-ffmpeg gnutls gcrypt dvbpsi dav1d vpx ogg vorbis opus flac theora \
+ speex speexdsp a52 dca faad2 mpg123 libmpeg2 twolame lame x264 x265 ebml matroska \
+ fribidi ass kate modplug gme sidplay2 libxml2 taglib live555 libarchive \
+ dvdread dvdnav bluray aribb24 postproc soxr samplerate mysofa spatialaudio png jpeg \
+ srt ssh2 smb2 nfs upnp libdsm mpcdec openjpeg}"
 build_contrib() {
-# i486: the SFOS target ships no nasm/yasm, so VLC's contrib ffmpeg (x86) needs
-# --disable-x86asm (else configure aborts: "nasm/yasm not found"); and its older
-# 4.4.4 inline asm doesn't assemble with the target gas (mathops.h: "operand type
-# mismatch for shr"), so also --disable-inline-asm. ARM targets use gas fine and
-# are untouched. Idempotent (matches the pristine or the already-patched line).
+# i486: niente nasm/yasm nel target e l'asm inline di ffmpeg 4.4.4 non si
+# assembla con il gas del target ⇒ --disable-x86asm --disable-inline-asm.
 if [ "$ARCH" = "i486" ]; then
     sed -i -E 's/^FFMPEGCONF \+= --arch=x86( --disable-x86asm)?$/FFMPEGCONF += --arch=x86 --disable-x86asm --disable-inline-asm/' \
         "$SRC/contrib/src/ffmpeg/rules.mak"
 fi
-# sfdk build-shell DEVE girare dalla root del build tree (dove sta il .pro);
-# i path interni sono assoluti, quindi il cwd di lavoro non conta.
-(cd "$PROJ" && "$SFDK" build-shell bash -c "
-set -e
+# ffmpeg 4.4.4 su ARM32: i binutils del target 5.1 rifiutano le etichette locali
+# "01:"/"01b" di mlpdsp_armv5te.S ("junk at end of line"). Stessa correzione di
+# upstream (01 -> 1), applicata subito dopo l'estrazione. Idempotente.
+grep -q 'mlpdsp_armv5te' "$SRC/contrib/src/ffmpeg/rules.mak" || \
+    sed -i 's|^\t$(APPLY) $(SRC)/ffmpeg/armv7_fixup.patch$|&\n\tsed -i -e "s/^01:/1:/" -e "s/bne     01b/bne     1b/" $@-$(FFMPEG_VERSION)/libavcodec/arm/mlpdsp_armv5te.S|' \
+        "$SRC/contrib/src/ffmpeg/rules.mak"
+# x265 2.9 su ARM32 compila con -mcpu=native (in cross il wrapper lo rende
+# "-march=" vuoto ⇒ errore): al suo posto -march=armv7-a (hard-float, NEON
+# scelto da x265 stesso). Applicato subito dopo l'estrazione. Idempotente.
+grep -q 'mcpu=native' "$SRC/contrib/src/x265/rules.mak" || \
+    sed -i 's|^\t$(APPLY) $(SRC)/x265/x265-pkg-libs.patch$|&\n\tsed -i "s/-mcpu=native/-march=armv7-a/" $(UNPACK_DIR)/source/CMakeLists.txt|' \
+        "$SRC/contrib/src/x265/rules.mak"
+# ...e su ARM32 senza assembly: asm-primitives.cpp di x265 2.9 non compila col
+# gcc del target ("incompatible types in assignment"). x265 e' solo un encoder
+# (registrazione futura): la velocita' su armv7hl conta poco.
+grep -q 'ENABLE_ASSEMBLY' "$SRC/contrib/src/x265/rules.mak" || \
+    sed -i 's|-DENABLE_CLI=OFF$|-DENABLE_CLI=OFF $(if $(filter arm,$(ARCH)),-DENABLE_ASSEMBLY=OFF)|' \
+        "$SRC/contrib/src/x265/rules.mak"
+# Senza assembly, cpu.cpp chiamerebbe comunque i test NEON in asm (HAVE_ARMV6=1
+# fisso nel CMakeLists per ogni ARM) ⇒ undefined x265_cpu_fast_neon_mrc_test.
+# Su ARM32 l'asm e' sempre spento (sopra), quindi HAVE_ARMV6=0. (aarch64 non e'
+# "ARM" per x265 2.9: non lo tocca.)
+grep -q 'HAVE_ARMV6' "$SRC/contrib/src/x265/rules.mak" || \
+    sed -i 's|^\t$(APPLY) $(SRC)/x265/x265-pkg-libs.patch$|&\n\tsed -i "s/-DHAVE_ARMV6=1)/-DHAVE_ARMV6=0)/" $(UNPACK_DIR)/source/CMakeLists.txt|' \
+        "$SRC/contrib/src/x265/rules.mak"
+# dvdread SENZA dvdcss: la regola dei contrib lo lega per forza (DEPS + flag).
+# Come Fedora: dvdread legge i DVD non cifrati e, se presente, carica libdvdcss
+# da solo a runtime. Idempotente.
+sed -i -e 's/^DEPS_dvdread = dvdcss$/DEPS_dvdread =/' \
+       -e 's/^\.dvdread: dvdread \.dvdcss$/.dvdread: dvdread/' \
+       -e 's/ --with-libdvdcss//' "$SRC/contrib/src/dvdread/rules.mak"
+# bluray: i menu BD-J vogliono Java+ant (assenti, e sul telefono inutili).
+grep -q 'disable-bdjava-jar' "$SRC/contrib/src/bluray/rules.mak" || \
+    sed -i 's/^\(BLURAY_CONF = --disable-examples  \\\)$/\1\n              --disable-bdjava-jar \\/' \
+        "$SRC/contrib/src/bluray/rules.mak"
+# freetype2 / harfbuzz / fontconfig: quelli DI SISTEMA (ci sono su ogni SFOS, li
+# usa Qt). Un fontconfig statico dei contrib cercherebbe la configurazione sotto
+# $PREFIX/etc e sul telefono non troverebbe nessun font. Questo rules.mak viene
+# incluso DOPO main.mak (glob src/*/rules.mak): li dichiara "trovati" e rimette
+# il pkg-config del sysroot in coda a quello dei contrib.
+mkdir -p "$SRC/contrib/src/zz-sfos-system"
+cat > "$SRC/contrib/src/zz-sfos-system/rules.mak" <<'MK'
+# SFOS: librerie prese dal sistema invece che compilate (vedi build-libvlc.sh)
+PKGS_FOUND += freetype2 harfbuzz fontconfig
+PKG_CONFIG_LIBDIR := /usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+export PKG_CONFIG_LIBDIR
+MK
+local FAILED=""
+sfdk_shell "
 cd '$SRC/contrib'
-mkdir -p 'sfos-$ARCH' && cd 'sfos-$ARCH'
+mkdir -p 'sfos-$ARCH$SUF' && cd 'sfos-$ARCH$SUF'
+[ -f Makefile ] || ../bootstrap --host='$HOST' --prefix='$PREFIX'
+" > "$LOG/contrib-bootstrap.log" 2>&1
+for p in $CONTRIB_PKGS; do
+    printf '  contrib %-14s ' "$p"
+    if sfdk_shell "
+set -e
+cd '$CONTRIB'
+export PATH='$TOOLS':\$PATH
 export CC=gcc CXX=g++ AR=ar RANLIB=ranlib LD=ld STRIP=strip NM=nm
 export PKG_CONFIG=pkg-config
-# bootstrap (se non già fatto): genera il Makefile per l'host SFOS
-[ -f Makefile ] || ../bootstrap --host='$HOST' --prefix='$PREFIX'
-# build mirato dei soli pacchetti richiesti (+ dipendenze risolte da make)
-make -j\$(nproc) $CONTRIB_PKGS
-")
+# sidplay2: C++ del 2007, il gcc attuale rifiuta i narrowing char->int8_t.
+[ '$p' = sidplay2 ] && export CXXFLAGS='-Wno-narrowing'
+make -j\$(nproc) .$p
+" > "$LOG/contrib-$p.log" 2>&1; then echo ok; else echo FALLITO; FAILED="$FAILED $p"; fi
+done
+echo "contrib FALLITI:${FAILED:- nessuno}" | tee "$LOG/contrib-failed.txt"
 }
 
-# ── 2) libvlc core, set di moduli lean ───────────────────────────────────────
+# ── 2) libvlc core, set di moduli COMPLETO ───────────────────────────────────
 build_vlc() {
-(cd "$PROJ" && "$SFDK" build-shell bash -c "
+sfdk_shell "
 set -e
 cd '$SRC'
-[ -x configure ] || ./bootstrap
 export CC=gcc CXX=g++ AR=ar RANLIB=ranlib LD=ld STRIP=strip NM=nm
-# BUILDCC: VLC compila alcuni tool helper che girano sulla macchina di build.
-# Nel sb2 `gcc` è il cross (aarch64); `host-gcc` (i486-meego) è il compilatore
-# 'tools' eseguibile nell'ambiente di build → è il nostro compilatore nativo.
+# BUILDCC: i tool helper di VLC girano sulla macchina di build; nel sb2 'gcc' e'
+# il cross, 'host-gcc' e' il compilatore nativo eseguibile.
 export BUILDCC=host-gcc
-# Privacy: -ffile-prefix-map riscrive i path assoluti della macchina di build in
-# relativi, così i .so non incorporano /home/<user>/... . Colpisce i __FILE__ degli
-# assert VLC (finiscono in .rodata e sono visibili con \`strings\`). Copre sia
-# l'albero sorgente che la build dir.
-export CFLAGS=\"-ffile-prefix-map=$SRC=. -ffile-prefix-map=$B/build-$ARCH=. \${CFLAGS:-}\"
+# Privacy: -ffile-prefix-map toglie i path assoluti della macchina di build.
+export CFLAGS=\"-ffile-prefix-map=$SRC=. -ffile-prefix-map=$BUILD=. -ffile-prefix-map=$PREFIX=. \${CFLAGS:-}\"
 export CXXFLAGS=\"\$CFLAGS\"
-# PKG_CONFIG_PATH (additivo) per trovare il NOSTRO ffmpeg contrib SENZA perdere
-# il path di sistema del sb2 (dove sta libpulse ecc.). NB: usare LIBDIR lo
-# sostituirebbe, nascondendo le lib del target.
+# Header e librerie dei contrib senza file .pc (a52, faad2, libmpeg2...): VLC li
+# cerca con AC_CHECK_HEADERS/LIB, che vedono solo questi percorsi.
+export CPPFLAGS=\"-I$PREFIX/include \${CPPFLAGS:-}\"
+export LDFLAGS=\"-L$PREFIX/lib \${LDFLAGS:-}\"
+# PKG_CONFIG_PATH additivo: i contrib prima, il sysroot (libpulse, freetype...) dopo.
 export PKG_CONFIG_PATH='$PREFIX/lib/pkgconfig'
-# gnutls contrib e' statico: VLC usa pkg-config NON-static (solo -lgnutls), e il
-# plugin gnutls non linka (undefined nettle_*). Pre-impostiamo GNUTLS_LIBS con le
-# deps statiche (gnutls -> hogweed/nettle/gmp); PKG_CHECK_MODULES la tratta come
-# variabile precious e salta la propria probe.
+# I contrib sono statici e VLC interroga pkg-config senza --static: senza le
+# dipendenze transitive i plugin non linkano (undefined nettle_*, gpg_err_*...).
+export PKG_CONFIG='pkg-config --static'
 export GNUTLS_CFLAGS=\"-I'$PREFIX'/include\"
 export GNUTLS_LIBS=\"\$(pkg-config --static --libs gnutls)\"
-mkdir -p '$B/build-$ARCH' && cd '$B/build-$ARCH'
+mkdir -p '$BUILD' && cd '$BUILD'
 '$SRC'/configure --host='$HOST' --prefix=/usr \
   --disable-vlc --disable-nls --disable-update-check \
   --disable-lua --disable-qt --disable-skins2 --disable-ncurses \
-  --disable-srt --disable-vnc \
   --disable-xcb --disable-wayland --disable-x11 --disable-glx --disable-egl --disable-gles2 \
-  --disable-alsa --enable-pulse \
-  --disable-mtp --disable-udev --disable-dbus \
-  --disable-sout --disable-vlm \
-  --enable-avcodec --enable-swscale \
+  --without-x --disable-vdpau --disable-libva --disable-sdl-image --disable-caca \
+  --disable-alsa --disable-jack --enable-pulse \
+  --disable-mtp --disable-udev --disable-dbus --disable-notify \
+  --disable-secret --disable-libsecret --disable-kwallet \
+  --disable-chromecast --disable-microdns --disable-avahi \
+  --disable-libplacebo --disable-goom --disable-projectm --disable-vsxu \
+  --disable-fluidsynth --disable-fluidlite --disable-decklink --disable-crystalhd \
+  --disable-dvdcss --disable-aribb25 --disable-fdkaac --disable-medialibrary \
+  --disable-zvbi --enable-telx \
+  --enable-sout --enable-vlm \
   --enable-shared --disable-static \
-  --without-x \
-  --disable-a52 --disable-dca --disable-flac --disable-libmpeg2 \
-  --disable-vorbis --disable-tremor --disable-speex --disable-opus --disable-theora \
-  --disable-daala --disable-schroedinger --disable-png --disable-jpeg --disable-bpg \
-  --disable-x264 --disable-x265 --disable-x26410b --disable-mpg123 --disable-mad \
-  --disable-faad --disable-aom --disable-dav1d --disable-twolame --disable-fdkaac \
-  --disable-vpx --disable-mod --disable-gme --disable-sid \
-  --disable-fluidsynth --disable-fluidlite --disable-zvbi --disable-telx --disable-kate \
-  --disable-libass --disable-freetype --disable-fribidi --disable-harfbuzz \
-  --disable-fontconfig --disable-svg --disable-svgdec --disable-sdl-image \
-  --disable-aribb24 --disable-aribb25 \
-  --disable-dvdread --disable-dvdnav --disable-bluray --enable-dvbpsi \
-  --disable-live555 --disable-libtar --disable-libxml2 --disable-libarchive \
-  --enable-gnutls --disable-libgcrypt --disable-secret --disable-libsecret \
-  --disable-chromaprint --disable-caca --disable-goom --disable-projectm --disable-vsxu \
-  --disable-libplacebo --disable-jack --disable-chromecast --disable-microdns --disable-upnp
+  --enable-avcodec --enable-avformat --enable-swscale --enable-postproc \
+  --enable-gnutls --enable-dvbpsi --enable-libgcrypt \
+  --enable-dav1d --enable-vpx --enable-ogg --enable-vorbis --enable-opus --enable-flac \
+  --enable-theora --enable-speex --enable-a52 --enable-dca --enable-faad \
+  --enable-mpg123 --enable-libmpeg2 --enable-twolame --enable-x264 --enable-x265 \
+  --enable-mkv --enable-libass --enable-freetype --enable-fribidi --enable-harfbuzz \
+  --enable-fontconfig --enable-kate --enable-mod --enable-gme --enable-sid \
+  --enable-libxml2 --enable-taglib --enable-live555 --enable-archive \
+  --enable-dvdread --enable-dvdnav --enable-bluray --enable-aribb24 \
+  --enable-soxr --enable-samplerate --enable-spatialaudio --enable-png --enable-jpeg \
+  --enable-srt --enable-sftp --enable-smb2 --enable-nfs --enable-upnp --enable-dsm \
+  --enable-mpc
 make -j\$(nproc)
 rm -rf '$STAGE'
-# Install MIRATO per-dir: libvlc (lib/), libvlccore (src/) e gli header (include/).
-# Saltiamo 'share/' (fallisce su vlc.appdata.xml, assente con --disable-vlc) e 'bin/'.
+# Install MIRATO per-dir (share/ fallisce con --disable-vlc; i moduli NON via
+# make install: il relink di libtool nel cross tronca il set in silenzio).
 for d in src lib include; do
   make -C \"\$d\" install DESTDIR='$STAGE' || true
 done
-# Plugin: copiati DIRETTAMENTE dall'albero invece di 'make -C modules install'.
-# Quell'install rilinka ogni plugin con libtool e nel cross build il relink puo'
-# fallire (armv7hl: relink di libavcodec_plugin -> 'undefined reference to
-# av_codec_set_pkt_timebase'), abortendo l'install dei moduli e troncando
-# SILENZIOSAMENTE il set. VLC linka ogni plugin finale in modules/.libs/; i
-# plugin sono self-describing e caricati ricorsivamente via VLC_PLUGIN_PATH, quindi
-# una dir flat va bene (le sottocartelle per categoria dell'install sono cosmetiche).
 mkdir -p '$STAGE/usr/lib/vlc/plugins'
-cp -f '$B/build-$ARCH/modules/.libs/'lib*_plugin.so '$STAGE/usr/lib/vlc/plugins/'
-")
+cp -f '$BUILD/modules/.libs/'lib*_plugin.so '$STAGE/usr/lib/vlc/plugins/'
+" 2>&1 | tee "$LOG/vlc.log"
 }
 
 # ── 3) vendoring: .so + plugin + header nel layout per-arch del repo ──────────
@@ -179,9 +251,9 @@ vendor() {
     # libpulse_plugin.so dipende da libvlc_pulse.so.0 (NON un *_plugin.so, quindi lo
     # step 'stage' coi soli lib*_plugin.so non lo prende). L'app lo preloada da
     # lib/vlc/; senza, il modulo d'uscita pulse non si carica e libVLC è muto.
-    if [ -f "$B/build-$ARCH/modules/.libs/libvlc_pulse.so.0.0.0" ]; then
+    if [ -f "$BUILD/modules/.libs/libvlc_pulse.so.0.0.0" ]; then
         mkdir -p "$DST/lib/vlc"
-        cp -f "$B/build-$ARCH/modules/.libs/libvlc_pulse.so.0.0.0" "$DST/lib/vlc/libvlc_pulse.so.0"
+        cp -f "$BUILD/modules/.libs/libvlc_pulse.so.0.0.0" "$DST/lib/vlc/libvlc_pulse.so.0"
     fi
     # header pubblici (una volta)
     if [ ! -d "$PROJ/vlc/include/vlc" ]; then
@@ -220,6 +292,7 @@ PY
 case "$STEP" in
     contrib) build_contrib ;;
     vlc)     build_vlc; vendor ;;
+    vendor)  vendor ;;
     all)     build_contrib; build_vlc; vendor ;;
 esac
 

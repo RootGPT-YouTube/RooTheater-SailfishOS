@@ -43,34 +43,38 @@ below, reproducible with the build recipe shipped in `scripts/build-ffmpeg.sh` a
 - License texts: `licenses/ffmpeg/`
 
 **libVLC** (VideoLAN) and its plugins
-- Role: broad coverage backend for exotic containers/codecs/streaming
+- Role: broad coverage backend — since 1.9.0 a **full build** with the same
+  codecs, demuxers and access modules as desktop VLC (AV1 via dav1d, VP8/VP9,
+  native MKV/Ogg, ASS subtitles, DVD/Blu-ray without copy protection, RTSP,
+  SRT, SMB, NFS, SFTP, UPnP, x264/x265 encoders…)
 - Version: 3.0.21
-- License: LGPL-2.1-or-later for libvlc / libvlccore; some bundled plugins are
-  GPL-2.0-or-later
+- License: libvlc / libvlccore are LGPL-2.1-or-later; many plugins and the
+  contrib libraries they embed are GPL-2.0-or-later, so the bundled libVLC as a
+  whole is distributed under **GPL-2.0-or-later** (compatible with
+  RooTheater's GPL-3.0-or-later)
 - Distribution: `libvlc` / `libvlccore` shared objects and the VLC plugins are
   **bundled** in the RPM under `/usr/share/harbour-rootheater/lib/` and loaded via
-  the binary RPATH and `VLC_PLUGIN_PATH`. The TLS access (`libgnutls_plugin`) and
-  MPEG-TS demux (`libts_plugin`) plugins are built and bundled to support HTTPS
-  network streaming; they statically include the contrib libraries listed next.
+  the binary RPATH and `VLC_PLUGIN_PATH`
 - Source / corresponding source: https://www.videolan.org/vlc/ (3.0.21) + `scripts/build-libvlc.sh`
 - License texts: `licenses/vlc/`
 
-**libVLC contrib libraries** (statically linked into the TLS / MPEG-TS plugins above)
-- Role: TLS for `https://` streams (GnuTLS + its crypto deps) and MPEG-TS
-  parsing (libdvbpsi); built from source by VLC's contrib system as part of
-  `scripts/build-libvlc.sh` and statically linked into `libgnutls_plugin.so` /
-  `libts_plugin.so` (no separate shared objects are shipped)
-- Components, versions and licenses:
-  - **GnuTLS** 3.6.16 — LGPL-2.1-or-later — https://www.gnutls.org/
-  - **Nettle** 3.7.3 — LGPL-3.0-or-later OR GPL-2.0-or-later (dual) — https://www.lysator.liu.se/~nisse/nettle/
-  - **GMP** 6.1.2 — LGPL-3.0-or-later OR GPL-2.0-or-later (dual) — https://gmplib.org/
-  - **libtasn1** 4.8 — LGPL-2.1-or-later — https://www.gnu.org/software/libtasn1/
-  - **libdvbpsi** 1.3.3 — LGPL-2.1-or-later — https://www.videolan.org/developers/libdvbpsi.html
-- Distribution: statically embedded in the two VLC plugins bundled in the RPM
-- Source / corresponding source: the upstream projects at the versions above,
-  fetched and built by `scripts/build-libvlc.sh` (VLC contrib)
-- License texts: `licenses/vlc/` (LGPL-2.1 / LGPL-3 / GPL-2 cover these too; see
-  `licenses/vlc/CONTRIB.md` for the per-library mapping)
+**libVLC contrib libraries** (statically linked into the bundled VLC plugins)
+- Role: the codec, container, subtitle, crypto and network libraries behind the
+  plugins above, built from source by VLC's contrib system as part of
+  `scripts/build-libvlc.sh` (no separate shared objects are shipped)
+- Components: 58 libraries — the complete list with versions, SPDX licenses and
+  upstream links is in [`licenses/vlc/CONTRIB.md`](licenses/vlc/CONTRIB.md).
+  Licenses involved: GPL-2.0-or-later (x264, x265, FAAD2, liba52, libdca,
+  libmpeg2, libdvdread, libdvdnav, libpostproc, libsidplay2), LGPL-2.1/3.0-or-later
+  (FFmpeg, GnuTLS, libgcrypt, LIVE555, libebml/libmatroska, mpg123, libbluray…),
+  MPL-2.0 (SRT) and permissive licenses (BSD, MIT, ISC, libpng, IJG: dav1d,
+  libvpx, Xiph codecs, libass, libxml2…)
+- Left out on purpose: fdk-aac (incompatible with the GPL), libzvbi (two
+  GPL-2.0-only files), and libdvdcss / libaacs / libbdplus / aribb25 (copy
+  protection circumvention, not distributable in the EU)
+- Source / corresponding source: the upstream projects at the versions listed
+  in `CONTRIB.md`, fetched and built by `scripts/build-libvlc.sh` (VLC contrib)
+- License texts: `licenses/vlc/contrib/<library>/` (+ `licenses/vlc/COPYING.*`)
 
 **droidmedia**
 - Role: hardware video decode through the Android HAL via libhybris (the direct

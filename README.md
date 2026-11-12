@@ -1,20 +1,22 @@
 # RooTheater
 
-A multimedia player for **Sailfish OS 5.1**, focused on hardware-accelerated
+A multimedia player for **Sailfish OS 5.1 and 5.2**, focused on hardware-accelerated
 playback of **local files and network streams**. Part of the `RooT*` app family.
 
-Prerequisite: SFOS 5.1.0.11  
+Prerequisite: SFOS 5.1.0.11 or later (tested up to 5.2.0.22)  
 Telegram Group: https://t.me/+E7V-a7x4JbY1Njhk  
 RooTheater is tested on:  
+- POCO M4 Pro 4G (SFOS 5.2.0.22)  
 - Sony Xperia 10 III (SFOS 5.1.0.11)  
 - Jolla C2 (SFOS 5.1.0.11)  
 
 This application was developed using artificial intelligence technologies, specifically Warp Terminal and Claude Code Opus, but Warp Terminal has been gradually phased out in favor of Claude Code. Therefore, if the use of an application generated via a large-scale language model (LLM) is not comfortable for the user, it is recommended to avoid its installation and use. It is specified that any negative comment regarding this circumstance will not only be ignored but will result in the immediate blocking of the user.
 I hereby disclaim any and all responsibility for the application, its functionality, and any consequences arising from its use. By choosing to use this application, the user acknowledges and accepts that they do so entirely at their own risk, and agrees that the developer shall not be held liable for any damages, losses, or adverse effects—whether direct, indirect, incidental, or consequential—resulting from the use or misuse of the application.
 
-Requisiti: SFOS 5.1.0.11  
+Requisiti: SFOS 5.1.0.11 o successivo (provato fino alla 5.2.0.22)  
 Gruppo Telegram: https://t.me/+E7V-a7x4JbY1Njhk  
 RooTheater è testato:  
+- POCO M4 Pro 4G (SFOS 5.2.0.22)  
 - Sony Xperia 10 III (SFOS 5.1.0.11)  
 - Jolla C2 (SFOS 5.1.0.11)  
 
@@ -33,7 +35,7 @@ backend per codec/source:
 |------|---------|------|--------|
 | 1 | **droidmedia** (direct) | Zero-copy HW decode: gralloc buffers → `EGLImage` → `QSGTexture` | **done** (since v0.3) |
 | 2 | **QtMultimedia / GStreamer** | HW-accel for common formats via gst-droid | **done** (since v0.1) |
-| 3 | **libvlc** | Exotic protocols/codecs/subtitles; compiled per-arch | **done** (since v0.2) |
+| 3 | **libvlc** | Everything else: the full VLC codec/container/protocol set (AV1, VP8/VP9, MKV, ASS subtitles, DVD/Blu-ray, RTSP, SMB/NFS…); compiled per-arch | **done** (since v0.2, full build since 1.9.0) |
 
 All three layers are active. The C++ facade (`MediaEngine`) probes the source
 with ffmpeg and routes it capability-driven to the backend that should play it
@@ -66,15 +68,17 @@ own ffmpeg 7.0.2 as PIC static `.a` per arch (`scripts/build-ffmpeg.sh`, LGPL �
 no x264/gpl) and **static-link** it, so there is nothing to bundle, no RPATH
 and no spec excludes for ffmpeg.
 
-## Features (0.9.4-beta)
+## Features
 
 - **Media gallery** across the phone's three storage locations (internal
   memory, Android storage, SD card), organized by type (Images / Videos /
   Audio) with thumbnail grids, animated GIFs, tag view and multi-select
   delete/share.
 - **Video player** on the layered engine above: droidmedia zero-copy HW decode
-  for the popular codecs, libVLC/QtMultimedia coverage for the rest; seek,
-  loop, rotation, HW/SW decoding toggle.
+  for the popular codecs, and a **full libVLC** (the same codecs as desktop VLC:
+  AV1 via dav1d, VP8/VP9, native MKV/Ogg, DTS/AC-3, styled ASS subtitles…) for
+  the rest; seek, loop, rotation, HW/SW decoding toggle, video/audio/subtitle
+  track selection and external subtitle files.
 - **Audio player** with metadata (FFmpeg tag probe), cover art, album playback
   and audio/video **playlists**.
 - **Image tools**: pinch-to-zoom viewer (images and video) and a
@@ -95,8 +99,7 @@ and no spec excludes for ffmpeg.
 
 ## Roadmap
 
-- Subtitles and audio-track selection, playback resume, and further
-  gallery/player refinements.
+- Playback resume and further gallery/player refinements.
 
 ## Building from source (English)
 
@@ -112,8 +115,9 @@ below — the scripts are the *corresponding source* of the LGPL/GPL components
 **Prerequisites**
 - The [Sailfish SDK](https://docs.sailfishos.org/Tools/Sailfish_SDK/) installed,
   with `sfdk` on your `PATH`.
-- The **SailfishOS-5.0.0.62** build target for your architecture — one of
-  `aarch64`, `armv7hl`, `i486`.
+- The **SailfishOS-5.1.0.11** build target for your architecture — one of
+  `aarch64`, `armv7hl`, `i486`. It is the newest target the SDK provides; the
+  RPMs built on it also run on Sailfish OS 5.2.
 
 **Steps** (replace `<arch>` with `aarch64`, `armv7hl` or `i486`):
 
@@ -122,40 +126,53 @@ below — the scripts are the *corresponding source* of the LGPL/GPL components
    git clone https://github.com/RootGPT-YouTube/RooTheater-SailfishOS.git
    cd RooTheater-SailfishOS
    ```
-2. **Install the build dependency** into the SDK target (once per arch):
+2. **Install the build dependencies** into the SDK target (once per arch):
    ```sh
-   sfdk engine exec sb2 -t SailfishOS-5.0.0.62-<arch>.default \
-        -m sdk-install -R zypper -n in droidmedia-devel
+   sfdk engine exec sb2 -t SailfishOS-5.1.0.11-<arch>.default \
+        -m sdk-install -R zypper -n in droidmedia-devel \
+        'pkgconfig(libpulse-simple)' 'pkgconfig(libssl)' 'pkgconfig(libcrypto)'
    ```
+   Only if you rebuild libVLC from source (step 3, second option), also install
+   `gettext-devel`; the **i486** target needs in addition
+   `git ninja gperf bison flex nasm harfbuzz-devel bzip2-devel systemd-devel`.
 3. **Get the vendored dependencies** (FFmpeg + libVLC) — either option works:
    - **Download (fast):** grab `rootheater-vendor-<version>.tar.zst` from the
      [Releases](https://github.com/RootGPT-YouTube/RooTheater-SailfishOS/releases)
-     page and extract it at the repo root:
+     page (the `vendor-<version>` release) and extract it at the repo root:
      ```sh
      tar --zstd -xf rootheater-vendor-<version>.tar.zst   # → ffmpeg/<arch>/ + vlc/<arch>/
      ```
+     The same release carries `rootheater-vendor-src-<version>.tar.zst`: the exact
+     upstream source tarballs (VLC, its 58 contrib libraries, FFmpeg) the binaries
+     were built from.
    - **Or rebuild from source** (the LGPL/GPL *corresponding source*):
      ```sh
      bash scripts/build-ffmpeg.sh <arch>      # → ffmpeg/<arch>/lib/*.a (static PIC, LGPL)
-     bash scripts/build-libvlc.sh <arch>      # → vlc/<arch>/lib + .../vlc/plugins (long)
+     bash scripts/build-libvlc.sh <arch>      # → vlc/<arch>/lib + .../vlc/plugins (hours)
      ```
+     `build-libvlc.sh` builds VLC's contrib libraries one by one and prints the
+     ones that failed; `scripts/collect-vlc-licenses.py` then gathers their
+     license texts into `licenses/vlc/`.
 4. **Build the RPM**:
    ```sh
-   sfdk -c target=SailfishOS-5.0.0.62-<arch> build
+   sfdk -c target=SailfishOS-5.1.0.11-<arch> build
    # → RPMS/harbour-rootheater-<version>-1.<arch>.rpm
    ```
+   Always pass the target with `-c target=` on the command itself:
+   `sfdk config target=…` does not carry over to the next command.
 5. **Install on the device** (copy the RPM over, then on the phone):
    ```sh
-   sudo pkcon install-local --allow-untrusted harbour-rootheater-<version>-1.<arch>.rpm
+   devel-su pkcon install-local -y harbour-rootheater-<version>-1.<arch>.rpm
    ```
 
 The `.pro` gates the libVLC layer on `vlc/<arch>/lib/libvlc.so` and droidmedia on
 `packagesExist(droidmedia)`, so an arch without a vendored piece still builds
 (without that layer) — check qmake's `message(...)` lines to confirm all layers
-are active. On **i486** the scripts disable x86 asm (no nasm/yasm in the target).
-For a full release, repeat steps 2–4 for each arch. Conventions shared with the
-`RooT*` family: package `harbour-rootheater`, 3-arch RPMs, version single-sourced
-from `RT_APP_VERSION` in the `.pro`.
+are active. When switching architecture, delete the previous build's objects first
+(`rm -f *.o moc_* qrc_* Makefile .qmake.stash harbour-rootheater`): `make distclean`
+cannot run across architectures. For a full release, repeat steps 2–4 for each
+arch. Conventions shared with the `RooT*` family: package `harbour-rootheater`,
+3-arch RPMs, version single-sourced from `RT_APP_VERSION` in the `.pro`.
 
 ## Compilare dai sorgenti (Italiano)
 
@@ -171,8 +188,9 @@ componenti LGPL/GPL (vedi [NOTICE.md](NOTICE.md)).
 **Prerequisiti**
 - Il [Sailfish SDK](https://docs.sailfishos.org/Tools/Sailfish_SDK/) installato,
   con `sfdk` nel `PATH`.
-- Il target **SailfishOS-5.0.0.62** per la tua architettura — una tra
-  `aarch64`, `armv7hl`, `i486`.
+- Il target **SailfishOS-5.1.0.11** per la tua architettura — una tra
+  `aarch64`, `armv7hl`, `i486`. È il target più recente offerto dall'SDK; gli RPM
+  costruiti con questo target girano anche su Sailfish OS 5.2.
 
 **Passi** (sostituisci `<arch>` con `aarch64`, `armv7hl` o `i486`):
 
@@ -181,39 +199,53 @@ componenti LGPL/GPL (vedi [NOTICE.md](NOTICE.md)).
    git clone https://github.com/RootGPT-YouTube/RooTheater-SailfishOS.git
    cd RooTheater-SailfishOS
    ```
-2. **Installa la dipendenza di build** nel target dell'SDK (una volta per arch):
+2. **Installa le dipendenze di build** nel target dell'SDK (una volta per arch):
    ```sh
-   sfdk engine exec sb2 -t SailfishOS-5.0.0.62-<arch>.default \
-        -m sdk-install -R zypper -n in droidmedia-devel
+   sfdk engine exec sb2 -t SailfishOS-5.1.0.11-<arch>.default \
+        -m sdk-install -R zypper -n in droidmedia-devel \
+        'pkgconfig(libpulse-simple)' 'pkgconfig(libssl)' 'pkgconfig(libcrypto)'
    ```
+   Solo se ricompili libVLC da sorgente (passo 3, seconda opzione) installa anche
+   `gettext-devel`; il target **i486** vuole in più
+   `git ninja gperf bison flex nasm harfbuzz-devel bzip2-devel systemd-devel`.
 3. **Procurati le dipendenze vendorizzate** (FFmpeg + libVLC) — vanno bene entrambe:
    - **Scarica (veloce):** prendi `rootheater-vendor-<versione>.tar.zst` dalla pagina
      [Releases](https://github.com/RootGPT-YouTube/RooTheater-SailfishOS/releases)
-     ed estrailo nella radice del repo:
+     (la release `vendor-<versione>`) ed estrailo nella radice del repo:
      ```sh
      tar --zstd -xf rootheater-vendor-<versione>.tar.zst   # → ffmpeg/<arch>/ + vlc/<arch>/
      ```
+     Nella stessa release c'è `rootheater-vendor-src-<versione>.tar.zst`: i tarball
+     sorgenti upstream esatti (VLC, le sue 58 librerie contrib, FFmpeg) da cui sono
+     stati costruiti i binari.
    - **Oppure ricompila da sorgente** (la *corresponding source* LGPL/GPL):
      ```sh
      bash scripts/build-ffmpeg.sh <arch>      # → ffmpeg/<arch>/lib/*.a (statiche PIC, LGPL)
-     bash scripts/build-libvlc.sh <arch>      # → vlc/<arch>/lib + .../vlc/plugins (lunga)
+     bash scripts/build-libvlc.sh <arch>      # → vlc/<arch>/lib + .../vlc/plugins (ore)
      ```
+     `build-libvlc.sh` compila le librerie contrib di VLC una alla volta e alla fine
+     elenca quelle fallite; `scripts/collect-vlc-licenses.py` raccoglie poi i loro
+     testi di licenza in `licenses/vlc/`.
 4. **Compila l'RPM**:
    ```sh
-   sfdk -c target=SailfishOS-5.0.0.62-<arch> build
+   sfdk -c target=SailfishOS-5.1.0.11-<arch> build
    # → RPMS/harbour-rootheater-<versione>-1.<arch>.rpm
    ```
+   Passa sempre il target con `-c target=` sul comando stesso:
+   `sfdk config target=…` non vale per il comando successivo.
 5. **Installa sul dispositivo** (copia l'RPM, poi sul telefono):
    ```sh
-   sudo pkcon install-local --allow-untrusted harbour-rootheater-<versione>-1.<arch>.rpm
+   devel-su pkcon install-local -y harbour-rootheater-<versione>-1.<arch>.rpm
    ```
 
 Il `.pro` abilita il layer libVLC solo se esiste `vlc/<arch>/lib/libvlc.so` e
 droidmedia solo se `packagesExist(droidmedia)`, quindi un'arch senza un pezzo
 vendorizzato si compila comunque (senza quel layer) — controlla i `message(...)`
-di qmake per confermare che ogni layer sia attivo. Su **i486** gli script
-disabilitano l'assembly x86 (nel target non c'è nasm/yasm). Per un rilascio
-completo, ripeti i passi 2–4 per ogni arch.
+di qmake per confermare che ogni layer sia attivo. Quando cambi architettura,
+cancella prima gli oggetti della build precedente
+(`rm -f *.o moc_* qrc_* Makefile .qmake.stash harbour-rootheater`): `make distclean`
+non funziona fra un'architettura e l'altra. Per un rilascio completo, ripeti i
+passi 2–4 per ogni arch.
 
 ## YouTube & trademarks
 
