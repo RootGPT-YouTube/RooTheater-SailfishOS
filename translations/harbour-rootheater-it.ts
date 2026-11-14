@@ -1248,6 +1248,22 @@ Trascina verso il basso per riprovare.</translation>
         <source>There is nothing to play until then. Come back when it starts.</source>
         <translation>Fino ad allora non c&apos;è niente da riprodurre. Torna quando inizia.</translation>
     </message>
+    <message>
+        <source>Cannot show this YouTube video because of an anti-bot block.</source>
+        <translation>Impossibile visualizzare il video di YouTube per blocco anti-bot.</translation>
+    </message>
+    <message>
+        <source>YouTube will not play this video.</source>
+        <translation>YouTube non riproduce questo video.</translation>
+    </message>
+    <message>
+        <source>Is a VPN active?</source>
+        <translation>Hai una VPN attiva?</translation>
+    </message>
+    <message>
+        <source>YouTube asks to confirm you are not a bot when it does not trust the network address. Turn the VPN off and open the video again.</source>
+        <translation>YouTube chiede di confermare che non sei un bot quando non si fida dell&apos;indirizzo di rete. Disattiva la VPN e riapri il video.</translation>
+    </message>
 </context>
 <context>
     <name>YtSearch</name>

@@ -1,3 +1,11 @@
+* Sat Nov 14 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 2.0-1
+- When YouTube refuses to play a video, the player now says why instead of
+  showing a black screen. Behind a VPN YouTube often asks to confirm you are
+  not a bot and serves no video at all: RooTheater recognises that anti-bot
+  block and shows "Cannot show this YouTube video because of an anti-bot
+  block. Is a VPN active?". Any other refusal (age-restricted, unavailable…)
+  shows YouTube's own reason.
+
 * Thu Nov 12 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 1.9.0-1
 - The bundled libVLC now carries the same codecs, demuxers and access modules
   as desktop VLC, instead of a reduced set. AV1 videos play (dav1d, software

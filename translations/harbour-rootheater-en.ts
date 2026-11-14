@@ -1248,6 +1248,22 @@ Pull down to retry.</translation>
         <source>There is nothing to play until then. Come back when it starts.</source>
         <translation>There is nothing to play until then. Come back when it starts.</translation>
     </message>
+    <message>
+        <source>Cannot show this YouTube video because of an anti-bot block.</source>
+        <translation>Cannot show this YouTube video because of an anti-bot block.</translation>
+    </message>
+    <message>
+        <source>YouTube will not play this video.</source>
+        <translation>YouTube will not play this video.</translation>
+    </message>
+    <message>
+        <source>Is a VPN active?</source>
+        <translation>Is a VPN active?</translation>
+    </message>
+    <message>
+        <source>YouTube asks to confirm you are not a bot when it does not trust the network address. Turn the VPN off and open the video again.</source>
+        <translation>YouTube asks to confirm you are not a bot when it does not trust the network address. Turn the VPN off and open the video again.</translation>
+    </message>
 </context>
 <context>
     <name>YtSearch</name>

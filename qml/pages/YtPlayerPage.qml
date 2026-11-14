@@ -66,6 +66,14 @@ Page {
     property bool upcoming: false
     property double upcomingStart: 0
     property bool upcomingLive: true
+    // YouTube refused to serve the video (see rtBlocked in watchInitJs):
+    // "bot" = the anti-bot check (typically a VPN exit address), otherwise the
+    // playabilityStatus it gave, with YouTube's own (already localised) reason.
+    property bool blocked: false
+    property string blockKind: ""
+    property string blockReason: ""
+    // Nothing to play on the watch page: keep it hidden and suspended.
+    readonly property bool noVideo: upcoming || blocked
 
     // Fullscreen orientation: 0 = not fullscreen (follow device), 1 = landscape
     // video (force landscape), 2 = portrait video (force portrait). Driven by the
@@ -222,6 +230,30 @@ Page {
         "if(!s){try{s=Math.round(Date.parse(r.microformat.playerMicroformatRenderer" +
         ".liveBroadcastDetails.startTimestamp)/1000)||0;}catch(e){}}" +
         "return s+':'+(vd.isLiveContent?1:0);}catch(e){return null;}}" +
+        // Refused outright. Behind a VPN (or any address YouTube distrusts) the
+        // watch page answers LOGIN_REQUIRED, "Sign in to confirm you're not a bot",
+        // with no <video> at all, and the fullscreen starter blew that up into a
+        // black screen. Same treatment as a scheduled stream: report
+        // "RTBLOCK:<bot | status>:<reason, URI-encoded>" and leave the page alone.
+        // The reason is localised by YouTube, but "bot" survives in the languages
+        // that matter here (en "not a bot", it "non sei un bot"); 3037019 is the
+        // help article its "Learn more" link points to. Age gates are also
+        // LOGIN_REQUIRED, so the status alone is not enough to say "bot".
+        "function rtBlocked(){try{var id=new URLSearchParams(location.search).get('v');" +
+        "var p=document.getElementById('movie_player');var r=null;" +
+        "try{if(p&&p.getPlayerResponse)r=p.getPlayerResponse();}catch(e){}" +
+        "if(!r||!r.playabilityStatus)r=window.ytInitialPlayerResponse;" +
+        "var ps=r&&r.playabilityStatus;if(!ps)return null;var vd=r.videoDetails||{};" +
+        "if(id&&vd.videoId&&vd.videoId!==id)return null;var st=ps.status||'';" +
+        "if(!st||st==='OK'||st==='LIVE_STREAM_OFFLINE'||vd.isUpcoming)return null;" +
+        "var why=ps.reason||'';if(!why){try{var em=ps.errorScreen.playerErrorMessageRenderer.reason;" +
+        "why=em.simpleText||(em.runs||[]).map(function(x){return x.text;}).join('');}catch(e){}}" +
+        "var all='';try{all=JSON.stringify(ps);}catch(e){}" +
+        "var bot=/\\bbots?\\b/i.test(why)||all.indexOf('answer/3037019')>=0;" +
+        "return (bot?'bot':st)+':'+encodeURIComponent(why);}catch(e){return null;}}" +
+        "function rtBlock(b){rtSend('RTBLOCK:'+b);" +
+        "try{if(document.fullscreenElement)document.exitFullscreen();}catch(e){}}" +
+        "var bl=rtBlocked();if(bl!==null){rtBlock(bl);return;}" +
         "function rtLive(u){rtSend('RTLIVE:'+u);" +
         "try{if(document.fullscreenElement)document.exitFullscreen();}catch(e){}}" +
         "var up=rtUpcoming();if(up!==null){rtLive(up);return;}" +
@@ -644,6 +676,7 @@ Page {
         // The player response can land after the first check above did: look again
         // before every fullscreen attempt, so a slate is never blown up.
         "var u=rtUpcoming();if(u!==null){clearInterval(k);rtLive(u);return;}" +
+        "var b=rtBlocked();if(b!==null){clearInterval(k);rtBlock(b);return;}" +
         "var v=document.querySelector('video');hookV(v);" +
         "fsCss();goFs();" +
         "if(n>25){clearInterval(k);}" +
@@ -699,7 +732,7 @@ Page {
     // blanking for as long as the watch page is up, this page is on top and the
     // app is focused (backgrounding or navigating away re-enables normal blanking).
     DisplayBlanking {
-        preventBlanking: page.ready && !page.upcoming
+        preventBlanking: page.ready && !page.noVideo
                          && page.status === PageStatus.Active
                          && Qt.application.active
     }
@@ -785,11 +818,11 @@ Page {
         // it, so overriding it here is enough. Tied to the page rather than
         // hardcoded true, so leaving the player still suspends Gecko.
         // A scheduled stream has nothing to play: suspend the page under the notice.
-        active: page.status !== PageStatus.Inactive && !page.upcoming
+        active: page.status !== PageStatus.Inactive && !page.noVideo
         // Keep it rendering (so it loads) but invisible until the watch page is up
         // (so the embed's error-153 page is never seen). The watch page itself is
         // fine to show — it auto-goes fullscreen, and the plain page when not.
-        opacity: page.ready && !page.upcoming ? 1.0 : 0.0
+        opacity: page.ready && !page.noVideo ? 1.0 : 0.0
         Behavior on opacity { FadeAnimation {} }
 
         // Throttle the video to the cheapest level whenever the app is not in
@@ -844,6 +877,19 @@ Page {
                 page.upcomingStart = (parseInt(f[0], 10) || 0) * 1000
                 page.upcomingLive = f[1] !== "0"
                 page.upcoming = true
+                return
+            }
+            // Refused by YouTube (see rtBlocked in watchInitJs).
+            if (t.indexOf("RTBLOCK:") === 0) {
+                var c = t.indexOf(":", 8)
+                page.blockKind = c < 0 ? t.substring(8) : t.substring(8, c)
+                try {
+                    page.blockReason = c < 0 ? "" : decodeURIComponent(t.substring(c + 1))
+                } catch (e) {
+                    page.blockReason = ""
+                }
+                console.log("[RooTheater] YT refused: " + page.blockKind + " " + page.blockReason)
+                page.blocked = true
                 return
             }
             // Flight-recorder flush: a single title change carrying the ~60s that
@@ -1026,6 +1072,58 @@ Page {
                 wrapMode: Text.Wrap
                 color: Theme.secondaryColor
                 text: qsTr("There is nothing to play until then. Come back when it starts.")
+            }
+        }
+    }
+
+    // Refused by YouTube: the anti-bot check (a VPN, most of the time) or another
+    // playability error. Says why instead of showing a black screen.
+    Rectangle {
+        anchors.fill: parent
+        visible: page.blocked && !page.upcoming
+        color: Theme.overlayBackgroundColor
+
+        Column {
+            anchors.centerIn: parent
+            width: parent.width - 2 * Theme.horizontalPageMargin
+            spacing: Theme.paddingLarge
+
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeExtraLarge
+                color: Theme.highlightColor
+                text: page.blockKind === "bot"
+                      ? qsTr("Cannot show this YouTube video because of an anti-bot block.")
+                      : qsTr("YouTube will not play this video.")
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                color: Theme.secondaryHighlightColor
+                text: page.title
+                visible: text !== ""
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeLarge
+                color: Theme.highlightColor
+                visible: page.blockKind === "bot"
+                text: qsTr("Is a VPN active?")
+            }
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                color: Theme.secondaryColor
+                text: page.blockKind === "bot"
+                      ? qsTr("YouTube asks to confirm you are not a bot when it does not trust the network address. Turn the VPN off and open the video again.")
+                      : page.blockReason
+                visible: text !== ""
             }
         }
     }
