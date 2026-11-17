@@ -1,3 +1,11 @@
+* Tue Nov 17 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 2.1-1
+- RooTheater now always reopens right after you close it. After a network
+  change with a YouTube video open (typically switching a VPN off), closing
+  the app could take several seconds, and a tap on the icon in that window
+  was lost: the app seemed not to start until it was killed by hand. The app
+  now hands over its name as soon as its window closes, so a new tap starts
+  a fresh instance, and it never takes more than 2.5 seconds to quit.
+
 * Sat Nov 14 2026 RootGPT <166707820+RootGPT-YouTube@users.noreply.github.com> 2.0-1
 - When YouTube refuses to play a video, the player now says why instead of
   showing a black screen. Behind a VPN YouTube often asks to confirm you are

@@ -29,6 +29,10 @@
 #include <qqml.h>
 #include <QDBusConnection>
 #include <QString>
+#include <atomic>
+#include <chrono>
+#include <thread>
+#include <unistd.h>
 
 #include "media/MediaEngine.h"
 #include "media/VideoSurface.h"
@@ -165,6 +169,30 @@ int main(int argc, char *argv[])
 
     view->setSource(SailfishApp::pathTo("qml/harbour-rootheater.qml"));
     view->show();
+
+    // Bounded shutdown. Once the window is gone the process still owns the
+    // app's D-Bus name, but OpenHandler is already destroyed: a tap on the icon
+    // in that window reaches the dying process ("Remote action failed: No such
+    // object path") and is lost, so the app "does not reopen". Gecko's teardown
+    // normally takes under a second, but after a network change (VPN switched
+    // off with the WebView open) it was measured at 3 s and 13 s. Give it a
+    // short grace period, then leave regardless.
+    // The name is also given up at once, so a tap during that grace period
+    // D-Bus-activates a fresh instance instead of reaching this one.
+    static std::atomic_flag exitArmed = ATOMIC_FLAG_INIT;
+    auto armExitWatchdog = []() {
+        if (exitArmed.test_and_set())
+            return;
+        QDBusConnection::sessionBus().unregisterService(
+            QStringLiteral("com.github.RootGPT_YouTube.rootheater"));
+        std::thread([]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+            qWarning("[RooTheater] shutdown took over 2.5 s, forcing exit");
+            _exit(0);
+        }).detach();
+    };
+    QObject::connect(app.data(), &QGuiApplication::lastWindowClosed, armExitWatchdog);
+    QObject::connect(app.data(), &QCoreApplication::aboutToQuit, armExitWatchdog);
 
     return app->exec();
 }
